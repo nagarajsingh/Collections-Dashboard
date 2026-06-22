@@ -1,0 +1,6 @@
+streamlit==1.45.1
+pdfplumber==0.11.6
+pandas==2.2.3
+requests==2.32.3
+sqlalchemy==2.0.41
+psycopg2-binary==2.9.10
