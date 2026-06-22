@@ -1,0 +1,34 @@
+{
+  "Egypt": {
+    "vtbatch-01": "collections-batch-01-service-egypt",
+    "vtbatch-02": "collections-batch-02-service-egypt",
+    "vtbatch-03": "collections-batch-03-service-egypt",
+    "vtbatch-04": "collections-batch-04-service-egypt",
+    "vtbatch-05": "collections-batch-05-service-egypt",
+    "vtchequecash": "collections-cheque-cash-service-egypt",
+    "vtcustomer": "collections-customer-service-egypt",
+    "vtdashboardreports": "collections-dashboard-reports-service-egypt",
+    "vtdds": "collections-dds-service-egypt",
+    "vtmaster": "collections-master-service-egypt",
+    "vtuserrole": "collections-user-role-management-service-egypt",
+    "vtransact-ui": "collections-static-web-egypt",
+    "vtwidget": "collections-widget-service-egypt",
+    "vtopenapi": "collections-open-api-service-egypt"
+  },
+  "UAE": {
+    "vtbatch-01": "collections-batch-01-service",
+    "vtbatch-02": "collections-batch-02-service",
+    "vtbatch-03": "collections-batch-03-service",
+    "vtbatch-04": "collections-batch-04-service",
+    "vtbatch-05": "collections-batch-05-service",
+    "vtchequecash": "collections-cheque-cash-service",
+    "vtcustomer": "collections-customer-service",
+    "vtdashboardreports": "collections-dashboard-reports-service",
+    "vtdds": "collections-dds-service",
+    "vtmaster": "collections-master-service",
+    "vtuserrole": "collections-user-role-management-service",
+    "vtransact-ui": "collections-static-web",
+    "vtwidget": "collections-widget-service",
+    "vtopenapi": "collections-open-api-service"
+  }
+}
