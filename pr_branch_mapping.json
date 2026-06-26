@@ -1,0 +1,107 @@
+{
+  "obtf": {
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "t24": "release/t24",
+    "prod": "release/prod",
+    "omsit": "release/omsit"
+  },
+  "obtf-kernel": {
+    "t24": "release/mos-t24uat",
+    "uat": "release/mos",
+    "r2uat": "release/mos",
+    "ppr": "release/mos-preprod",
+    "preprod": "release/mos-preprod",
+    "prod": "release/mos-preprod",
+    "omsit": "release/mos"
+  },
+  "obtf": {
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "t24": "release/t24",
+    "prod": "release/prod",
+    "omsit": "release/omsit"
+  },
+  "obp-kernel": {
+    "t24": "release/most24",
+    "uat": "release/mos",
+    "r2uat": "release/uat",
+    "ppr": "release/mos-preprod",
+    "preprod": "release/mos-preprod",
+    "prod": "release/mos-prod-hk",
+    "omsit": "release/mos-omsit"
+  },
+  "obtfpm": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "moc": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "plato": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "cmncore": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "oblm": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "oblmic": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "prod": "release/prod"
+  },
+  "obvam": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "prod": "release/prod"
+  },
+  "obvamic": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "prod": "release/prod"
+  }
+}
