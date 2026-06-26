@@ -332,8 +332,18 @@ def render_gtb_dashboard(selected_date):
         pr_input_df.insert(0, "Raise PR", False)
         pr_input_df.loc[0, "Raise PR"] = True
 
+        pr_cols = [
+            "Raise PR",
+            "id",
+            "pipeline_application",
+            "branch_name",
+            "environment",
+            "source_branch",
+            "result",
+        ]
+
         edited_pr_df = st.data_editor(
-            pr_input_df,
+            pr_input_df[[c for c in pr_cols if c in pr_input_df.columns]],
             use_container_width=True,
             num_rows="fixed",
             column_config={
@@ -347,11 +357,13 @@ def render_gtb_dashboard(selected_date):
             pr_results = []
 
             for _, row in selected_pr_df.iterrows():
-                row_id = row["id"]
-                app = str(row.get("pipeline_application", "")).strip()
-                env = normalize_env(row.get("environment", ""))
-                source_branch = str(row.get("source_branch", "")).strip()
-                branch_name = str(row.get("branch_name", "")).strip()
+                full_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+
+                row_id = full_row["id"]
+                app = str(full_row.get("pipeline_application", "")).strip()
+                env = normalize_env(full_row.get("environment", ""))
+                source_branch = str(full_row.get("source_branch", "")).strip()
+                branch_name = str(full_row.get("branch_name", "")).strip()
 
                 repo_name = REPO_MAPPING.get(app)
                 target_branch = PR_BRANCH_MAPPING.get(app, {}).get(env)
@@ -390,7 +402,7 @@ def render_gtb_dashboard(selected_date):
                         f"Environment: {env}\n"
                         f"Source Branch: {source_branch}\n"
                         f"Target Branch: {target_branch}\n"
-                        f"Code Pull Run: {row.get('run_id')}\n"
+                        f"Code Pull Run: {full_row.get('run_id')}\n"
                     )
 
                     pr = create_pull_request(
@@ -441,7 +453,101 @@ def render_gtb_dashboard(selected_date):
 
             st.dataframe(pd.DataFrame(pr_results), use_container_width=True)
 
+    ready_for_build = code_pull_df[
+        (code_pull_df["result"] == "succeeded")
+    ] if not code_pull_df.empty else pd.DataFrame()
+
+    if ready_for_build.empty:
+        st.info("No successful code-pull runs available for build trigger.")
+    else:
+        st.markdown("### Trigger Build Pipeline")
+
+        build_input_cols = [
+            "id",
+            "pipeline_application",
+            "build_branch",
+            "war_files",
+            "jar_files",
+            "deploy_type",
+            "result",
+        ]
+
+        build_input_df = ready_for_build[[c for c in build_input_cols if c in ready_for_build.columns]].copy()
+        build_input_df.insert(0, "Trigger Build", False)
+
+        if not build_input_df.empty:
+            build_input_df.loc[0, "Trigger Build"] = True
+
+        edited_df = st.data_editor(
+            build_input_df,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config={
+                "Trigger Build": st.column_config.CheckboxColumn("Trigger Build", default=False)
+            },
+        )
+
+        selected_df = edited_df[edited_df["Trigger Build"] == True]
+
+        if st.button("Trigger Build Pipeline for Selected"):
+            results = []
+
+            for _, row in selected_df.iterrows():
+                code_pull_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+                app = code_pull_row.get("pipeline_application")
+                build_config = BUILD_PIPELINE_MAPPING.get(app)
+
+                if not build_config:
+                    results.append({
+                        "app": app,
+                        "status": "failed",
+                        "error": f"No build pipeline mapping found for app: {app}",
+                    })
+                    continue
+
+                item = {
+                    "build_branch": code_pull_row.get("build_branch"),
+                    "war_files": code_pull_row.get("war_files") or "None",
+                    "jar_files": code_pull_row.get("jar_files") or "None",
+                    "deploy_type": code_pull_row.get("deploy_type") or "Regular",
+                }
+
+                try:
+                    pipeline_id, result, template_parameters = trigger_build_pipeline_item(item, build_config)
+
+                    insert_build_run(
+                        code_pull_row=code_pull_row,
+                        pipeline_id=pipeline_id,
+                        result=result,
+                        normalized_war_files=template_parameters.get("war_files", "None"),
+                        normalized_jar_files=template_parameters.get("jar_files", "None"),
+                    )
+
+                    results.append({
+                        "app": app,
+                        "branch": template_parameters.get("branch"),
+                        "war_files": template_parameters.get("war_files"),
+                        "jar_files": template_parameters.get("jar_files"),
+                        "deploy_type": template_parameters.get("deploy_type"),
+                        "status": "triggered",
+                        "run_id": result.get("id"),
+                        "url": result.get("_links", {}).get("web", {}).get("href", ""),
+                        "error": "",
+                    })
+
+                except Exception as exc:
+                    results.append({
+                        "app": app,
+                        "status": "failed",
+                        "error": str(exc),
+                    })
+
+            st.subheader("Build Trigger Results")
+            st.dataframe(pd.DataFrame(results), use_container_width=True)
+
     st.markdown("### Build Status")
+
+    build_df = get_build_runs_by_date(selected_date)
 
     if build_df.empty:
         st.info("No build runs found for selected date.")
@@ -455,10 +561,14 @@ def render_gtb_dashboard(selected_date):
             "war_files",
             "jar_files",
             "deploy_type",
+            "status",
             "result",
             "run_url",
             "error",
+            "created_at",
+            "updated_at",
         ]
+
         st.dataframe(
             build_df[[c for c in build_cols if c in build_df.columns]],
             use_container_width=True,
@@ -466,99 +576,6 @@ def render_gtb_dashboard(selected_date):
                 "run_url": st.column_config.LinkColumn("Build", display_text="Open"),
             },
         )
-
-    ready_for_build = code_pull_df[
-        (code_pull_df["result"] == "succeeded")
-    ] if not code_pull_df.empty else pd.DataFrame()
-
-    if ready_for_build.empty:
-        st.info("No successful code-pull runs available for build trigger.")
-        return
-
-    st.markdown("### Trigger Build Pipeline")
-
-    build_input_cols = [
-        "id",
-        "pipeline_application",
-        "build_branch",
-        "war_files",
-        "jar_files",
-        "deploy_type",
-        "result",
-    ]
-
-    build_input_df = ready_for_build[[c for c in build_input_cols if c in ready_for_build.columns]].copy()
-    build_input_df.insert(0, "Trigger Build", False)
-
-    if not build_input_df.empty:
-        build_input_df.loc[0, "Trigger Build"] = True
-
-    edited_df = st.data_editor(
-        build_input_df,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Trigger Build": st.column_config.CheckboxColumn("Trigger Build", default=False)
-        },
-    )
-
-    selected_df = edited_df[edited_df["Trigger Build"] == True]
-
-    if st.button("Trigger Build Pipeline for Selected"):
-        results = []
-
-        for _, row in selected_df.iterrows():
-            code_pull_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
-            app = code_pull_row.get("pipeline_application")
-            build_config = BUILD_PIPELINE_MAPPING.get(app)
-
-            if not build_config:
-                results.append({
-                    "app": app,
-                    "status": "failed",
-                    "error": f"No build pipeline mapping found for app: {app}",
-                })
-                continue
-
-            item = {
-                "build_branch": code_pull_row.get("build_branch"),
-                "war_files": code_pull_row.get("war_files") or "None",
-                "jar_files": code_pull_row.get("jar_files") or "None",
-                "deploy_type": code_pull_row.get("deploy_type") or "Regular",
-            }
-
-            try:
-                pipeline_id, result, template_parameters = trigger_build_pipeline_item(item, build_config)
-
-                insert_build_run(
-                    code_pull_row=code_pull_row,
-                    pipeline_id=pipeline_id,
-                    result=result,
-                    normalized_war_files=template_parameters.get("war_files", "None"),
-                    normalized_jar_files=template_parameters.get("jar_files", "None"),
-                )
-
-                results.append({
-                    "app": app,
-                    "branch": template_parameters.get("branch"),
-                    "war_files": template_parameters.get("war_files"),
-                    "jar_files": template_parameters.get("jar_files"),
-                    "deploy_type": template_parameters.get("deploy_type"),
-                    "status": "triggered",
-                    "run_id": result.get("id"),
-                    "url": result.get("_links", {}).get("web", {}).get("href", ""),
-                    "error": "",
-                })
-
-            except Exception as exc:
-                results.append({
-                    "app": app,
-                    "status": "failed",
-                    "error": str(exc),
-                })
-
-        st.subheader("Build Trigger Results")
-        st.dataframe(pd.DataFrame(results), use_container_width=True)
 
 
 def render_collections_dashboard(selected_date, use_vendor_image):
