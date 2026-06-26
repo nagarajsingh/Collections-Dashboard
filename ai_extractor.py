@@ -59,8 +59,7 @@ Rules:
 4. image_tag must be tag only.
 5. vendorImage must be service:image_tag.
 6. vendorImage must not include registry.
-7. If a common Version Tag is mentioned and images do not show full tag, apply that version tag.
-8. If no services are found, return {{"services": []}}.
+7. If no services are found, return {{"services": []}}.
 
 Document text:
 {document_text}
@@ -70,14 +69,8 @@ Document text:
         model=OPENAI_MODEL,
         temperature=0,
         messages=[
-            {
-                "role": "system",
-                "content": "You extract structured deployment image data from unstructured release documents."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            },
+            {"role": "system", "content": "You extract structured deployment image data."},
+            {"role": "user", "content": prompt},
         ],
     )
 
@@ -111,7 +104,7 @@ def ai_extract_code_pull_details(document_text):
     client = get_openai_client()
 
     prompt = f"""
-You are an AI agent that extracts code-pull pipeline parameters from banking release documents.
+You are an AI agent that extracts code-pull and build-pipeline parameters from banking release documents.
 
 Return ONLY valid JSON. No markdown. No explanation.
 
@@ -128,13 +121,17 @@ Required JSON format:
       "code_base_version": "",
       "change_type": "",
       "list_only": false,
+      "build_branch": "",
+      "war_files": "",
+      "jar_files": "",
+      "deploy_type": "Regular",
       "confidence": "",
       "notes": ""
     }}
   ]
 }}
 
-Azure DevOps code-pull pipeline accepts this APP list only:
+Valid pipeline_application values:
 - cmncore
 - moc
 - obdx
@@ -156,81 +153,67 @@ Azure DevOps code-pull pipeline accepts this APP list only:
 
 Rules:
 
-1. Multiple repositories/branches may exist in one document.
-   Create one JSON item per repository/branch.
+1. Multiple repository blocks may exist. Create one item per Repo Name / Branch Name block.
 
-2. Extract application_name from Product Name, Project Name, Services, document title, or deployment information.
-   Examples:
-   OBP, OBTFPM, OBTF, OBDX, OBLM, OBLMIC, OBVAM, OBVAMIC, CMNCORE, MOC, PLATO.
+2. Extract:
+   - application_name from Product Name, Project Name, Services, document title.
+   - repository_name from Repo Name.
+   - branch_name from Branch Name.
+   - environment from Environment.
+   - code_base_version from Code Base Version.
+   - change_type from CUSTOMIZATION, Custom, KERNEL, etc.
 
-3. Extract branch_name from fields like:
-   - Branch Name
-   - Profinch Branch
-   - Deployment Steps
-   - sync branch instruction
+3. pipeline_application:
+   - If repo contains MOCORE, use "moc".
+   - If repo contains OBTFPM, use "obtfpm".
+   - If repo contains CMNCORE or COMMONCORE, use "cmncore".
+   - If repo contains PLATO, use "plato".
+   - OBTF custom -> obtf.
+   - OBTF kernel -> obtf-kernel.
+   - OBP custom -> obp.
+   - OBP kernel -> obp-kernel.
+   - OBLM -> oblm.
+   - OBLMIC or OBLM-IC -> oblmic.
+   - OBVAM -> obvam.
+   - OBVAMIC or OBVAM-IC -> obvamic.
 
-4. Extract repository_name from fields like:
-   - Repo Name
-   - Repository
-   - Profinch Repo
+4. application_type:
+   - If CUSTOMIZATION, Custom, Custom fix, use "custom".
+   - If KERNEL, use "kernel".
+   - Otherwise use "standard".
 
-5. Extract environment from fields like:
-   - Environment
-   - build release
-   - deployment target
-   Examples: UAT, R2UAT, SIT, RLSIT, T24, PROD.
+5. build_branch:
+   - R2UAT or UAT -> release/uat.
+   - PREPROD or PPR -> release/preprod.
+   - T24 -> release/t24.
+   - PROD -> release/prod.
+   - OMSIT -> release/omsit.
+   - SIT -> release/sit.
+   - TXCSIT -> release/txcsit.
 
-6. Extract code_base_version from:
-   - Code Base Version
-   - Release version
-   - Version
+6. WAR/JAR extraction:
+   - Extract WAR files only from the same repository block.
+   - Extract JAR files only from the same repository block.
+   - Include filenames ending with .war in war_files.
+   - Include filenames ending with .jar in jar_files.
+   - If no WAR files for that block, war_files = "None".
+   - If no JAR files for that block, jar_files = "None".
+   - Separate multiple files with comma and space.
+   - Do not mix files from another Repo Name block.
 
-7. application_type:
-   - If document mentions CUSTOMIZATION, Custom, Custom fix, or custom branch, use "custom".
-   - If document mentions KERNEL or kernel branch, use "kernel".
-   - If neither is clear, use "standard".
+7. deploy_type:
+   - Use "Regular" by default.
+   - Use "NewSetup" only if document explicitly mentions NewSetup.
 
-8. pipeline_application mapping:
-   - OBTFPM -> obtfpm
-   - OBTF -> obtf
-   - OBDX -> obdx
-   - OBLM -> oblm
-   - OBLMIC -> oblmic
-   - OBVAM -> obvam
-   - OBVAMIC -> obvamic
-   - CMNCORE -> cmncore
-   - MOC -> moc
-   - PLATO -> plato
+8. confidence:
+   - high if repository_name, branch_name, pipeline_application, and WAR/JAR files are clearly found.
+   - medium if some values are inferred.
+   - low if important values are missing.
 
-9. Special custom/kernel mapping:
-   - OBP + custom -> obp
-   - OBP + kernel -> obp-kernel
-   - OBTF + custom -> obtf
-   - OBTF + kernel -> obtf-kernel
-   - OBP T24 + custom -> obp-t24
-   - OBP T24 + kernel -> obp-t24-kernel
-   - OBP PK + custom -> obp-pk
-   - OBP PK + kernel -> obp-pk-kernel
+9. notes:
+   - Mention inferred or missing fields.
 
-10. For OBTFPM documents:
-   - If repo name starts with MOCORE or contains MOCORE, use pipeline_application = "moc".
-   - If repo name starts with CMNCORE or contains CMNCORE, use pipeline_application = "cmncore".
-   - If repo name starts with PLATO or contains PLATO, use pipeline_application = "plato".
-   - If repo name starts with OBTFPM or contains OBTFPM, use pipeline_application = "obtfpm".
-   - If there are multiple Repo Name / Branch Name blocks, return one item per block.
-11. list_only:
-   - Always default to false unless document explicitly says list only.
-
-12. confidence:
-   - high if pipeline_application and branch_name are clearly found.
-   - medium if one field is inferred.
-   - low if important fields are missing.
-
-13. notes:
-   - Mention any missing, inferred, or ambiguous values.
-
-14. If no valid code-pull item is found, return:
-   {{"items": []}}
+10. If no valid item found, return {{"items": []}}.
 
 Document text:
 {document_text}
@@ -242,12 +225,9 @@ Document text:
         messages=[
             {
                 "role": "system",
-                "content": "You extract code-pull pipeline parameters from banking release documents."
+                "content": "You extract code-pull and build-pipeline parameters from release documents."
             },
-            {
-                "role": "user",
-                "content": prompt
-            },
+            {"role": "user", "content": prompt},
         ],
     )
 
