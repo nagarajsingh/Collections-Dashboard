@@ -240,6 +240,29 @@ def create_pull_request(repo_name, source_branch, target_branch, title, descript
     return response.json()
 
 
+def find_active_pull_request(repo_name, source_branch, target_branch):
+    url = (
+        f"https://dev.azure.com/{ORG}/{PROJECT}"
+        f"/_apis/git/repositories/{repo_name}/pullrequests"
+        f"?searchCriteria.status=active"
+        f"&searchCriteria.sourceRefName=refs/heads/{source_branch}"
+        f"&searchCriteria.targetRefName=refs/heads/{target_branch}"
+        f"&api-version={API_VERSION}"
+    )
+
+    response = requests.get(url, auth=azdo_auth(), timeout=30)
+
+    if response.status_code != 200:
+        raise Exception(response.text)
+
+    prs = response.json().get("value", [])
+
+    if prs:
+        return prs[0]
+
+    return None
+
+
 def get_pull_request_details(repo_name, pr_id):
     url = (
         f"https://dev.azure.com/{ORG}/{PROJECT}"
