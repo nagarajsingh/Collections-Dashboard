@@ -62,6 +62,43 @@ def post_pipeline_run(pipeline_id, template_parameters, ref_name=None):
     return response.json()
 
 
+def normalize_artifact_names(value):
+    if not value:
+        return "None"
+
+    value = str(value).strip()
+
+    if value.lower() in ["none", "no", "na", "n/a", ""]:
+        return "None"
+
+    normalized = (
+        value.replace(";", ",")
+        .replace(":", ",")
+        .replace("\n", ",")
+        .replace("\t", ",")
+    )
+
+    parts = []
+
+    for item in normalized.split(","):
+        item = item.strip()
+
+        if not item:
+            continue
+
+        item = item.replace(".war", "").replace(".jar", "")
+        item = item.replace(".WAR", "").replace(".JAR", "")
+        item = item.strip()
+
+        if item and item.lower() not in ["none", "no", "na", "n/a"]:
+            parts.append(item)
+
+    if not parts:
+        return "None"
+
+    return " ".join(parts)
+
+
 def trigger_image_pipeline(pipeline_id, vendor_image, use_vendor_image):
     return post_pipeline_run(
         pipeline_id,
@@ -128,8 +165,8 @@ def trigger_build_pipeline_item(item, build_config):
     deploy_type_param = params.get("deploy_type", "deploy_type")
 
     build_branch = item.get("build_branch") or "release/uat"
-    war_files = item.get("war_files") or "None"
-    jar_files = item.get("jar_files") or "None"
+    war_files = normalize_artifact_names(item.get("war_files"))
+    jar_files = normalize_artifact_names(item.get("jar_files"))
     deploy_type = item.get("deploy_type") or "Regular"
 
     template_parameters = {
@@ -145,7 +182,7 @@ def trigger_build_pipeline_item(item, build_config):
         ref_name=build_config.get("pipeline_version_ref") or BRANCH,
     )
 
-    return int(pipeline_id), result
+    return int(pipeline_id), result, template_parameters
 
 
 def get_run_status(pipeline_id, run_id):
@@ -166,6 +203,74 @@ def get_run_status(pipeline_id, run_id):
     return {
         "state": data.get("state", ""),
         "result": data.get("result", ""),
+        "url": data.get("_links", {}).get("web", {}).get("href", ""),
+        "error": "",
+    }
+
+
+def build_created_branch_name(profinch_branch, build_number, app_name):
+    return f"profinch/{profinch_branch}-{build_number}-{app_name}"
+
+
+def create_pull_request(repo_name, source_branch, target_branch, title, description):
+    url = (
+        f"https://dev.azure.com/{ORG}/{PROJECT}"
+        f"/_apis/git/repositories/{repo_name}/pullrequests"
+        f"?api-version={API_VERSION}"
+    )
+
+    payload = {
+        "sourceRefName": f"refs/heads/{source_branch}",
+        "targetRefName": f"refs/heads/{target_branch}",
+        "title": title,
+        "description": description,
+    }
+
+    response = requests.post(
+        url,
+        json=payload,
+        auth=azdo_auth(),
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+
+    if response.status_code not in [200, 201]:
+        raise Exception(response.text)
+
+    return response.json()
+
+
+def get_pull_request_details(repo_name, pr_id):
+    url = (
+        f"https://dev.azure.com/{ORG}/{PROJECT}"
+        f"/_apis/git/repositories/{repo_name}/pullrequests/{pr_id}"
+        f"?api-version={API_VERSION}"
+    )
+
+    response = requests.get(url, auth=azdo_auth(), timeout=30)
+
+    if response.status_code != 200:
+        return {
+            "status": "unknown",
+            "review_status": "unknown",
+            "url": "",
+            "error": response.text,
+        }
+
+    data = response.json()
+    reviewers = data.get("reviewers", [])
+    votes = [reviewer.get("vote", 0) for reviewer in reviewers]
+
+    if any(vote <= -10 for vote in votes):
+        review_status = "rejected"
+    elif any(vote > 0 for vote in votes):
+        review_status = "approved"
+    else:
+        review_status = "pending"
+
+    return {
+        "status": data.get("status", ""),
+        "review_status": review_status,
         "url": data.get("_links", {}).get("web", {}).get("href", ""),
         "error": "",
     }
