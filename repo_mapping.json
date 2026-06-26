@@ -1,0 +1,15 @@
+{
+  "obtf": "obtf-r2",
+  "obtf-kernel": "obtf-r2-kernel",
+  "obp": "obp-r2",
+  "obp-kernel": "obp-r2-kernel",
+  "obtfpm": "obtfpm-r2",
+  "moc": "moc-r2",
+  "cmncore": "commoncore-r2",
+  "plato": "plato-r2",
+  "obdx": "obdx-r2",
+  "oblm": "oblm-r2",
+  "oblmic": "oblmic-r2",
+  "obvam": "obvam-r2",
+  "obvamic": "obvamic-r2"
+}
