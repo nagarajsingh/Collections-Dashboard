@@ -2,6 +2,7 @@
   "moc": {
     "pipeline_name": "new-moc-build-pipeline",
     "pipeline_id": "",
+    "pipeline_version_ref": "refs/heads/develop",
     "parameters": {
       "branch": "branch",
       "war_files": "war_files",
@@ -12,6 +13,29 @@
   "obtfpm": {
     "pipeline_name": "new-obtfpm-build-pipeline",
     "pipeline_id": "",
+    "pipeline_version_ref": "refs/heads/develop",
+    "parameters": {
+      "branch": "branch",
+      "war_files": "war_files",
+      "jar_files": "jar_files",
+      "deploy_type": "deploy_type"
+    }
+  },
+  "cmncore": {
+    "pipeline_name": "new-cmncore-build-pipeline",
+    "pipeline_id": "",
+    "pipeline_version_ref": "refs/heads/develop",
+    "parameters": {
+      "branch": "branch",
+      "war_files": "war_files",
+      "jar_files": "jar_files",
+      "deploy_type": "deploy_type"
+    }
+  },
+  "plato": {
+    "pipeline_name": "new-plato-build-pipeline",
+    "pipeline_id": "",
+    "pipeline_version_ref": "refs/heads/develop",
     "parameters": {
       "branch": "branch",
       "war_files": "war_files",
