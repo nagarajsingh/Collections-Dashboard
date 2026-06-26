@@ -365,8 +365,9 @@ def render_gtb_dashboard(selected_date):
                 source_branch = str(full_row.get("source_branch", "")).strip()
                 branch_name = str(full_row.get("branch_name", "")).strip()
 
-                repo_name = REPO_MAPPING.get(app)
-                target_branch = PR_BRANCH_MAPPING.get(app, {}).get(env)
+                app_key = str(app).strip().lower()
+                repo_name = REPO_MAPPING.get(app_key)
+                target_branch = PR_BRANCH_MAPPING.get(app_key, {}).get(env)
 
                 if not repo_name:
                     error = f"No repo mapping found for app: {app}"
