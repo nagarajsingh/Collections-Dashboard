@@ -16,6 +16,10 @@ from azure_devops import (
     trigger_code_pull_pipeline_item,
     trigger_build_pipeline_item,
     get_run_status,
+    build_created_branch_name,
+    create_pull_request,
+    get_pull_request_details,
+    normalize_artifact_names,
 )
 from database import (
     init_db,
@@ -25,6 +29,7 @@ from database import (
     insert_code_pull_run,
     get_code_pull_runs_by_date,
     update_code_pull_status,
+    update_code_pull_pr,
     insert_build_run,
     get_build_runs_by_date,
     update_build_run_status,
@@ -45,6 +50,18 @@ with open("pipeline_mapping.json", "r", encoding="utf-8") as f:
 with open("build_pipeline_mapping.json", "r", encoding="utf-8") as f:
     BUILD_PIPELINE_MAPPING = json.load(f)
 
+try:
+    with open("repo_mapping.json", "r", encoding="utf-8") as f:
+        REPO_MAPPING = json.load(f)
+except FileNotFoundError:
+    REPO_MAPPING = {}
+
+try:
+    with open("pr_branch_mapping.json", "r", encoding="utf-8") as f:
+        PR_BRANCH_MAPPING = json.load(f)
+except FileNotFoundError:
+    PR_BRANCH_MAPPING = {}
+
 
 def check_config():
     required = [
@@ -62,6 +79,25 @@ def check_config():
     if missing:
         st.error(f"Missing environment variables: {', '.join(missing)}")
         st.stop()
+
+
+def normalize_env(env):
+    env = str(env or "").strip().lower()
+
+    aliases = {
+        "r2uat": "uat",
+        "uat": "uat",
+        "preprod": "ppr",
+        "ppr": "ppr",
+        "t24": "t24",
+        "prod": "prod",
+        "production": "prod",
+        "omsit": "omsit",
+        "sit": "sit",
+        "txcsit": "txcsit",
+    }
+
+    return aliases.get(env, env)
 
 
 def trigger_service(service, vendor_image, environment, use_vendor_image):
@@ -136,10 +172,6 @@ def trigger_service(service, vendor_image, environment, use_vendor_image):
         }
 
 
-def build_created_branch_name(profinch_branch, build_number, app_name):
-    return f"profinch/{profinch_branch}-{build_number}-{app_name}"
-
-
 def refresh_code_pull_status(selected_date):
     df = get_code_pull_runs_by_date(selected_date)
 
@@ -182,38 +214,253 @@ def refresh_build_status(selected_date):
         )
 
 
+def refresh_pr_status(selected_date):
+    df = get_code_pull_runs_by_date(selected_date)
+
+    for _, row in df.iterrows():
+        pr_id = row.get("pr_id")
+        repo_name = row.get("repo_name")
+
+        if pd.isna(pr_id) or not repo_name:
+            continue
+
+        details = get_pull_request_details(repo_name, int(pr_id))
+
+        update_code_pull_pr(
+            row_id=row["id"],
+            pr_url=details["url"] or row.get("pr_url", ""),
+            pr_status=details["status"],
+            pr_review_status=details["review_status"],
+            error=details["error"],
+            pr_id=int(pr_id),
+            repo_name=repo_name,
+            pr_target_branch=row.get("pr_target_branch"),
+        )
+
+
 def render_gtb_dashboard(selected_date):
     st.subheader("GTB Application Deployment")
 
-    if st.button("Get / Refresh Code Pull and Build Status"):
+    if st.button("Get / Refresh Code Pull, PR and Build Status"):
         refresh_code_pull_status(selected_date)
+        refresh_pr_status(selected_date)
         refresh_build_status(selected_date)
         st.success("GTB status refreshed.")
 
     code_pull_df = get_code_pull_runs_by_date(selected_date)
+    build_df = get_build_runs_by_date(selected_date)
 
-    st.markdown("### Code Pull Runs")
+    st.markdown("### Code Pull Status")
 
     if code_pull_df.empty:
         st.info("No code-pull runs found for selected date.")
     else:
+        code_pull_cols = [
+            "activity_date",
+            "id",
+            "pipeline_application",
+            "branch_name",
+            "environment",
+            "result",
+            "run_url",
+        ]
         st.dataframe(
-            code_pull_df,
+            code_pull_df[[c for c in code_pull_cols if c in code_pull_df.columns]],
             use_container_width=True,
             column_config={
                 "run_url": st.column_config.LinkColumn("Code Pull", display_text="Open"),
             },
         )
 
-    build_df = get_build_runs_by_date(selected_date)
+        with st.expander("Show code-pull artifact details"):
+            artifact_cols = [
+                "id",
+                "pipeline_application",
+                "build_branch",
+                "war_files",
+                "jar_files",
+                "deploy_type",
+                "source_branch",
+                "created_at",
+                "updated_at",
+                "error",
+            ]
+            st.dataframe(
+                code_pull_df[[c for c in artifact_cols if c in code_pull_df.columns]],
+                use_container_width=True,
+            )
 
-    st.markdown("### Build Runs")
+    st.markdown("### PR Status")
+
+    if code_pull_df.empty:
+        st.info("No PR activity found for selected date.")
+    else:
+        pr_cols = [
+            "activity_date",
+            "id",
+            "pipeline_application",
+            "repo_name",
+            "pr_id",
+            "pr_status",
+            "pr_review_status",
+            "pr_target_branch",
+            "pr_url",
+        ]
+        st.dataframe(
+            code_pull_df[[c for c in pr_cols if c in code_pull_df.columns]],
+            use_container_width=True,
+            column_config={
+                "pr_url": st.column_config.LinkColumn("PR", display_text="Open"),
+            },
+        )
+
+    ready_for_pr = code_pull_df[
+        (code_pull_df["result"] == "succeeded")
+        & (
+            code_pull_df["pr_id"].isna()
+            | code_pull_df["pr_url"].isna()
+            | (code_pull_df["pr_url"] == "")
+            | (code_pull_df["pr_status"] == "failed")
+        )
+    ] if not code_pull_df.empty else pd.DataFrame()
+
+    if not ready_for_pr.empty:
+        st.markdown("### Raise PR")
+
+        pr_input_df = ready_for_pr.copy()
+        pr_input_df = pr_input_df.sort_values("created_at", ascending=False).reset_index(drop=True)
+        pr_input_df.insert(0, "Raise PR", False)
+        pr_input_df.loc[0, "Raise PR"] = True
+
+        edited_pr_df = st.data_editor(
+            pr_input_df,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config={
+                "Raise PR": st.column_config.CheckboxColumn("Raise PR", default=False)
+            },
+        )
+
+        selected_pr_df = edited_pr_df[edited_pr_df["Raise PR"] == True]
+
+        if st.button("Raise PR for Selected"):
+            pr_results = []
+
+            for _, row in selected_pr_df.iterrows():
+                row_id = row["id"]
+                app = str(row.get("pipeline_application", "")).strip()
+                env = normalize_env(row.get("environment", ""))
+                source_branch = str(row.get("source_branch", "")).strip()
+                branch_name = str(row.get("branch_name", "")).strip()
+
+                repo_name = REPO_MAPPING.get(app)
+                target_branch = PR_BRANCH_MAPPING.get(app, {}).get(env)
+
+                if not repo_name:
+                    error = f"No repo mapping found for app: {app}"
+                    update_code_pull_pr(row_id, "", "failed", "failed", error)
+                    pr_results.append({"app": app, "status": "failed", "error": error})
+                    continue
+
+                if not target_branch:
+                    error = f"No target branch mapping found for app={app}, env={env}"
+                    update_code_pull_pr(row_id, "", "failed", "failed", error, repo_name=repo_name)
+                    pr_results.append({"app": app, "status": "failed", "error": error})
+                    continue
+
+                if not source_branch:
+                    error = "Source branch is empty."
+                    update_code_pull_pr(
+                        row_id,
+                        "",
+                        "failed",
+                        "failed",
+                        error,
+                        repo_name=repo_name,
+                        pr_target_branch=target_branch,
+                    )
+                    pr_results.append({"app": app, "status": "failed", "error": error})
+                    continue
+
+                try:
+                    title = f"Code Pull: {app} - {branch_name}"
+                    description = (
+                        "Auto-created PR from AI Agent document extractor.\n\n"
+                        f"Application: {app}\n"
+                        f"Environment: {env}\n"
+                        f"Source Branch: {source_branch}\n"
+                        f"Target Branch: {target_branch}\n"
+                        f"Code Pull Run: {row.get('run_id')}\n"
+                    )
+
+                    pr = create_pull_request(
+                        repo_name=repo_name,
+                        source_branch=source_branch,
+                        target_branch=target_branch,
+                        title=title,
+                        description=description,
+                    )
+
+                    pr_url = pr.get("_links", {}).get("web", {}).get("href", "")
+                    pr_status = pr.get("status", "active")
+                    pr_id = pr.get("pullRequestId")
+
+                    update_code_pull_pr(
+                        row_id=row_id,
+                        pr_url=pr_url,
+                        pr_status=pr_status,
+                        pr_review_status="pending",
+                        error="",
+                        pr_id=pr_id,
+                        repo_name=repo_name,
+                        pr_target_branch=target_branch,
+                    )
+
+                    pr_results.append({
+                        "app": app,
+                        "repo": repo_name,
+                        "target_branch": target_branch,
+                        "status": pr_status,
+                        "pr_id": pr_id,
+                        "url": pr_url,
+                        "error": "",
+                    })
+
+                except Exception as exc:
+                    error = str(exc)
+                    update_code_pull_pr(
+                        row_id=row_id,
+                        pr_url="",
+                        pr_status="failed",
+                        pr_review_status="failed",
+                        error=error,
+                        repo_name=repo_name,
+                        pr_target_branch=target_branch,
+                    )
+                    pr_results.append({"app": app, "status": "failed", "error": error})
+
+            st.dataframe(pd.DataFrame(pr_results), use_container_width=True)
+
+    st.markdown("### Build Status")
 
     if build_df.empty:
         st.info("No build runs found for selected date.")
     else:
+        build_cols = [
+            "activity_date",
+            "id",
+            "code_pull_id",
+            "pipeline_application",
+            "build_branch",
+            "war_files",
+            "jar_files",
+            "deploy_type",
+            "result",
+            "run_url",
+            "error",
+        ]
         st.dataframe(
-            build_df,
+            build_df[[c for c in build_cols if c in build_df.columns]],
             use_container_width=True,
             column_config={
                 "run_url": st.column_config.LinkColumn("Build", display_text="Open"),
@@ -230,7 +477,17 @@ def render_gtb_dashboard(selected_date):
 
     st.markdown("### Trigger Build Pipeline")
 
-    build_input_df = ready_for_build.copy()
+    build_input_cols = [
+        "id",
+        "pipeline_application",
+        "build_branch",
+        "war_files",
+        "jar_files",
+        "deploy_type",
+        "result",
+    ]
+
+    build_input_df = ready_for_build[[c for c in build_input_cols if c in ready_for_build.columns]].copy()
     build_input_df.insert(0, "Trigger Build", False)
 
     if not build_input_df.empty:
@@ -251,7 +508,8 @@ def render_gtb_dashboard(selected_date):
         results = []
 
         for _, row in selected_df.iterrows():
-            app = row.get("pipeline_application")
+            code_pull_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+            app = code_pull_row.get("pipeline_application")
             build_config = BUILD_PIPELINE_MAPPING.get(app)
 
             if not build_config:
@@ -263,27 +521,29 @@ def render_gtb_dashboard(selected_date):
                 continue
 
             item = {
-                "build_branch": row.get("build_branch"),
-                "war_files": row.get("war_files") or "None",
-                "jar_files": row.get("jar_files") or "None",
-                "deploy_type": row.get("deploy_type") or "Regular",
+                "build_branch": code_pull_row.get("build_branch"),
+                "war_files": code_pull_row.get("war_files") or "None",
+                "jar_files": code_pull_row.get("jar_files") or "None",
+                "deploy_type": code_pull_row.get("deploy_type") or "Regular",
             }
 
             try:
-                pipeline_id, result = trigger_build_pipeline_item(item, build_config)
+                pipeline_id, result, template_parameters = trigger_build_pipeline_item(item, build_config)
 
                 insert_build_run(
-                    code_pull_row=row,
+                    code_pull_row=code_pull_row,
                     pipeline_id=pipeline_id,
                     result=result,
+                    normalized_war_files=template_parameters.get("war_files", "None"),
+                    normalized_jar_files=template_parameters.get("jar_files", "None"),
                 )
 
                 results.append({
                     "app": app,
-                    "build_branch": item["build_branch"],
-                    "war_files": item["war_files"],
-                    "jar_files": item["jar_files"],
-                    "deploy_type": item["deploy_type"],
+                    "branch": template_parameters.get("branch"),
+                    "war_files": template_parameters.get("war_files"),
+                    "jar_files": template_parameters.get("jar_files"),
+                    "deploy_type": template_parameters.get("deploy_type"),
                     "status": "triggered",
                     "run_id": result.get("id"),
                     "url": result.get("_links", {}).get("web", {}).get("href", ""),
