@@ -577,7 +577,21 @@ def render_gtb_dashboard(selected_date):
             },
         )
 
+def filter_collection_services(extracted_data, environment):
+    allowed_services = set(PIPELINE_MAPPING.get(environment, {}).keys())
 
+    if not allowed_services:
+        return extracted_data
+
+    filtered = []
+
+    for item in extracted_data:
+        service = str(item.get("Service", "")).strip()
+
+        if service in allowed_services:
+            filtered.append(item)
+
+    return filtered
 def render_collections_dashboard(selected_date, use_vendor_image):
     st.subheader("Collections Deployment Dashboard")
 
@@ -770,6 +784,7 @@ if uploaded_file and extraction_type == "Code Pull Extraction":
 
 if uploaded_file and extraction_type == "Image Tag Extraction":
     extracted_data = extract_services_from_document(uploaded_file)
+    extracted_data = filter_collection_services(extracted_data, environment)
 
     if not extracted_data and use_ai_extractor:
         st.info("Rule-based extraction did not find services. Running AI Agent extraction...")
@@ -781,7 +796,8 @@ if uploaded_file and extraction_type == "Image Tag Extraction":
                 st.warning("Could not extract text from document. AI extraction skipped.")
             else:
                 extracted_data = ai_extract_services_from_text(document_text)
-                st.success(f"AI Agent extracted {len(extracted_data)} services.")
+                extracted_data = filter_collection_services(extracted_data, environment)
+                st.success(f"AI Agent extracted {len(extracted_data)} valid services.")
 
         except Exception as exc:
             st.error(f"AI extraction failed: {str(exc)}")
