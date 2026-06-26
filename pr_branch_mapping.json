@@ -17,11 +17,11 @@
     "prod": "release/mos-preprod",
     "omsit": "release/mos"
   },
-  "obtf": {
-    "preprod": "release/ppr",
-    "ppr": "release/ppr",
+  "obp": {
     "uat": "release/uat",
     "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
     "t24": "release/t24",
     "prod": "release/prod",
     "omsit": "release/omsit"
@@ -29,7 +29,7 @@
   "obp-kernel": {
     "t24": "release/most24",
     "uat": "release/mos",
-    "r2uat": "release/uat",
+    "r2uat": "release/mos",
     "ppr": "release/mos-preprod",
     "preprod": "release/mos-preprod",
     "prod": "release/mos-prod-hk",
@@ -63,6 +63,15 @@
     "prod": "release/prod"
   },
   "cmncore": {
+    "uat": "release/uat",
+    "r2uat": "release/uat",
+    "preprod": "release/ppr",
+    "ppr": "release/ppr",
+    "t24": "release/t24",
+    "omsit": "release/omsit",
+    "prod": "release/prod"
+  },
+  "obdx": {
     "uat": "release/uat",
     "r2uat": "release/uat",
     "preprod": "release/ppr",
