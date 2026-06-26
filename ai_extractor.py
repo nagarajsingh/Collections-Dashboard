@@ -186,7 +186,7 @@ Kernel/custom override:
 - If application is OBTF and text or branch contains KERNEL, MOS, kernel branch, or OBTF Kernel -> pipeline_application "obtf-kernel".
 - If application is OBP and text or branch contains KERNEL, MOS, kernel branch, or OBP Kernel -> pipeline_application "obp-kernel".
 - If text contains CUSTOMIZATION, Custom, Custom Fix, Mashreq Customizations -> application_type "custom".
-- If text contains KERNEL, Kernel Fix, MOS branch -> application_type "kernel".
+- If text contains KERNEL, Kernel Fix, MOS branch -> application_type "kernel" except plato because for kernel and custom or any branch we are using plato-r2 repo only
 - If neither is clear -> application_type "standard".
 
 Exact build_branch mapping:
