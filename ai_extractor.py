@@ -69,8 +69,14 @@ Document text:
         model=OPENAI_MODEL,
         temperature=0,
         messages=[
-            {"role": "system", "content": "You extract structured deployment image data."},
-            {"role": "user", "content": prompt},
+            {
+                "role": "system",
+                "content": "You extract structured deployment image data from unstructured release documents."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            },
         ],
     )
 
@@ -120,6 +126,7 @@ Required JSON format:
       "environment": "",
       "code_base_version": "",
       "change_type": "",
+      "azure_commit_id": "",
       "list_only": false,
       "build_branch": "",
       "war_files": "",
@@ -151,19 +158,20 @@ Valid pipeline_application values:
 - obp-t24
 - obp-t24-kernel
 
-Rules:
+General extraction rules:
 
 1. Multiple repository blocks may exist. Create one item per Repo Name / Branch Name block.
 
 2. Extract:
    - application_name from Product Name, Project Name, Services, document title.
    - repository_name from Repo Name.
-   - branch_name from Branch Name.
-   - environment from Environment.
-   - code_base_version from Code Base Version.
-   - change_type from CUSTOMIZATION, Custom, KERNEL, etc.
+   - branch_name from Branch Name, Profinch Branch, Deployment Steps, or sync instruction.
+   - environment from Environment, build release, deployment target, or deployment steps.
+   - code_base_version from Code Base Version, Version, or Release version.
+   - azure_commit_id from Azure Commit ID or any 40-character commit SHA.
+   - change_type from CUSTOMIZATION, Custom, KERNEL, DB, UI, Config, etc.
 
-3. pipeline_application:
+3. pipeline_application mapping:
    - If repo contains MOCORE, use "moc".
    - If repo contains OBTFPM, use "obtfpm".
    - If repo contains CMNCORE or COMMONCORE, use "cmncore".
@@ -179,21 +187,21 @@ Rules:
 
 4. application_type:
    - If CUSTOMIZATION, Custom, Custom fix, use "custom".
-   - If KERNEL, use "kernel".
+   - If KERNEL or Kernel fixes, use "kernel".
    - Otherwise use "standard".
 
 5. build_branch:
    - R2UAT or UAT -> release/uat.
+   - T24-UAT or T24 -> release/t24.
    - PREPROD or PPR -> release/preprod.
-   - T24 -> release/t24.
    - PROD -> release/prod.
    - OMSIT -> release/omsit.
    - SIT -> release/sit.
    - TXCSIT -> release/txcsit.
 
 6. WAR/JAR extraction:
-   - Extract WAR files only from the same repository block.
-   - Extract JAR files only from the same repository block.
+   - Extract WAR files only from the same repository/application block.
+   - Extract JAR files only from the same repository/application block.
    - Include filenames ending with .war in war_files.
    - Include filenames ending with .jar in jar_files.
    - If no WAR files for that block, war_files = "None".
@@ -205,15 +213,58 @@ Rules:
    - Use "Regular" by default.
    - Use "NewSetup" only if document explicitly mentions NewSetup.
 
-8. confidence:
-   - high if repository_name, branch_name, pipeline_application, and WAR/JAR files are clearly found.
-   - medium if some values are inferred.
-   - low if important values are missing.
+OBP special rules:
 
-9. notes:
-   - Mention inferred or missing fields.
+8. If document contains Project Name as Oracle Banking Payment or Services as OBP, create an item for OBP even if Repo Name is missing.
 
-10. If no valid item found, return {{"items": []}}.
+9. For OBP documents, branch_name may come from Deployment Steps sentence.
+   Example:
+   "DevOps Team will sync the OBP_Kernel_Hotfix_T24_USUKHK from the Profinch to Mashreq Env."
+   Extract:
+   branch_name = OBP_Kernel_Hotfix_T24_USUKHK
+
+10. If OBP document mentions KERNEL, Kernel fixes, or OBP_Kernel branch:
+    pipeline_application = "obp-kernel"
+    application_type = "kernel"
+    change_type = "KERNEL"
+
+11. If OBP document mentions Custom or CUSTOMIZATION and does not mention kernel:
+    pipeline_application = "obp"
+    application_type = "custom"
+
+12. If OBP document mentions T24-UAT or T24 environment:
+    build_branch = "release/t24"
+
+13. If OBP document mentions UAT but not T24:
+    build_branch = "release/uat"
+
+14. If OBP document has no WAR/JAR files:
+    war_files = "None"
+    jar_files = "None"
+
+15. For this OBP sample pattern:
+    Services: OBP
+    Release 5.12.60
+    Azure Commit ID: 27d1552723128d6dfac48fa53330116b9e1bb223
+    Deployment Steps: sync OBP_Kernel_Hotfix_T24_USUKHK
+    Expected:
+    application_name = "OBP"
+    pipeline_application = "obp-kernel"
+    branch_name = "OBP_Kernel_Hotfix_T24_USUKHK"
+    build_branch = "release/t24"
+    war_files = "None"
+    jar_files = "None"
+
+16. confidence:
+    - high if pipeline_application and branch_name are clearly found.
+    - medium if one field is inferred.
+    - low if important values are missing.
+
+17. notes:
+    - Mention missing, inferred, or ambiguous values.
+
+18. If no valid item found, return:
+    {{"items": []}}
 
 Document text:
 {document_text}
@@ -225,9 +276,12 @@ Document text:
         messages=[
             {
                 "role": "system",
-                "content": "You extract code-pull and build-pipeline parameters from release documents."
+                "content": "You extract code-pull and build-pipeline parameters from banking release documents."
             },
-            {"role": "user", "content": prompt},
+            {
+                "role": "user",
+                "content": prompt
+            },
         ],
     )
 
