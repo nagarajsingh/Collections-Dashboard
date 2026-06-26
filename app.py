@@ -14,6 +14,7 @@ from azure_devops import (
     resolve_pipeline_id,
     trigger_image_pipeline,
     trigger_code_pull_pipeline_item,
+    trigger_build_pipeline_item,
     get_run_status,
 )
 from database import (
@@ -21,6 +22,12 @@ from database import (
     insert_deployment,
     get_deployments_by_date,
     update_build_status,
+    insert_code_pull_run,
+    get_code_pull_runs_by_date,
+    update_code_pull_status,
+    insert_build_run,
+    get_build_runs_by_date,
+    update_build_run_status,
 )
 from pdf_utils import (
     extract_services_from_document,
@@ -34,6 +41,9 @@ st.title("AI Document Extractor")
 
 with open("pipeline_mapping.json", "r", encoding="utf-8") as f:
     PIPELINE_MAPPING = json.load(f)
+
+with open("build_pipeline_mapping.json", "r", encoding="utf-8") as f:
+    BUILD_PIPELINE_MAPPING = json.load(f)
 
 
 def check_config():
@@ -126,6 +136,240 @@ def trigger_service(service, vendor_image, environment, use_vendor_image):
         }
 
 
+def build_created_branch_name(profinch_branch, build_number, app_name):
+    return f"profinch/{profinch_branch}-{build_number}-{app_name}"
+
+
+def refresh_code_pull_status(selected_date):
+    df = get_code_pull_runs_by_date(selected_date)
+
+    for _, row in df.iterrows():
+        if pd.isna(row["pipeline_id"]) or pd.isna(row["run_id"]):
+            continue
+
+        if str(row.get("result") or "").lower() in ["succeeded", "failed", "canceled", "cancelled"]:
+            continue
+
+        status = get_run_status(int(row["pipeline_id"]), int(row["run_id"]))
+
+        update_code_pull_status(
+            row_id=row["id"],
+            status=status["state"],
+            result=status["result"],
+            run_url=status["url"] or row.get("run_url", ""),
+            error=status["error"],
+        )
+
+
+def refresh_build_status(selected_date):
+    df = get_build_runs_by_date(selected_date)
+
+    for _, row in df.iterrows():
+        if pd.isna(row["pipeline_id"]) or pd.isna(row["run_id"]):
+            continue
+
+        if str(row.get("result") or "").lower() in ["succeeded", "failed", "canceled", "cancelled"]:
+            continue
+
+        status = get_run_status(int(row["pipeline_id"]), int(row["run_id"]))
+
+        update_build_run_status(
+            row_id=row["id"],
+            status=status["state"],
+            result=status["result"],
+            run_url=status["url"] or row.get("run_url", ""),
+            error=status["error"],
+        )
+
+
+def render_gtb_dashboard(selected_date):
+    st.subheader("GTB Application Deployment")
+
+    if st.button("Get / Refresh Code Pull and Build Status"):
+        refresh_code_pull_status(selected_date)
+        refresh_build_status(selected_date)
+        st.success("GTB status refreshed.")
+
+    code_pull_df = get_code_pull_runs_by_date(selected_date)
+
+    st.markdown("### Code Pull Runs")
+
+    if code_pull_df.empty:
+        st.info("No code-pull runs found for selected date.")
+    else:
+        st.dataframe(
+            code_pull_df,
+            use_container_width=True,
+            column_config={
+                "run_url": st.column_config.LinkColumn("Code Pull", display_text="Open"),
+            },
+        )
+
+    build_df = get_build_runs_by_date(selected_date)
+
+    st.markdown("### Build Runs")
+
+    if build_df.empty:
+        st.info("No build runs found for selected date.")
+    else:
+        st.dataframe(
+            build_df,
+            use_container_width=True,
+            column_config={
+                "run_url": st.column_config.LinkColumn("Build", display_text="Open"),
+            },
+        )
+
+    ready_for_build = code_pull_df[
+        (code_pull_df["result"] == "succeeded")
+    ] if not code_pull_df.empty else pd.DataFrame()
+
+    if ready_for_build.empty:
+        st.info("No successful code-pull runs available for build trigger.")
+        return
+
+    st.markdown("### Trigger Build Pipeline")
+
+    build_input_df = ready_for_build.copy()
+    build_input_df.insert(0, "Trigger Build", False)
+
+    if not build_input_df.empty:
+        build_input_df.loc[0, "Trigger Build"] = True
+
+    edited_df = st.data_editor(
+        build_input_df,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "Trigger Build": st.column_config.CheckboxColumn("Trigger Build", default=False)
+        },
+    )
+
+    selected_df = edited_df[edited_df["Trigger Build"] == True]
+
+    if st.button("Trigger Build Pipeline for Selected"):
+        results = []
+
+        for _, row in selected_df.iterrows():
+            app = row.get("pipeline_application")
+            build_config = BUILD_PIPELINE_MAPPING.get(app)
+
+            if not build_config:
+                results.append({
+                    "app": app,
+                    "status": "failed",
+                    "error": f"No build pipeline mapping found for app: {app}",
+                })
+                continue
+
+            item = {
+                "build_branch": row.get("build_branch"),
+                "war_files": row.get("war_files") or "None",
+                "jar_files": row.get("jar_files") or "None",
+                "deploy_type": row.get("deploy_type") or "Regular",
+            }
+
+            try:
+                pipeline_id, result = trigger_build_pipeline_item(item, build_config)
+
+                insert_build_run(
+                    code_pull_row=row,
+                    pipeline_id=pipeline_id,
+                    result=result,
+                )
+
+                results.append({
+                    "app": app,
+                    "build_branch": item["build_branch"],
+                    "war_files": item["war_files"],
+                    "jar_files": item["jar_files"],
+                    "deploy_type": item["deploy_type"],
+                    "status": "triggered",
+                    "run_id": result.get("id"),
+                    "url": result.get("_links", {}).get("web", {}).get("href", ""),
+                    "error": "",
+                })
+
+            except Exception as exc:
+                results.append({
+                    "app": app,
+                    "status": "failed",
+                    "error": str(exc),
+                })
+
+        st.subheader("Build Trigger Results")
+        st.dataframe(pd.DataFrame(results), use_container_width=True)
+
+
+def render_collections_dashboard(selected_date, use_vendor_image):
+    st.subheader("Collections Deployment Dashboard")
+
+    if st.button("Get / Refresh Collections Pipeline Status"):
+        dashboard = get_deployments_by_date(selected_date)
+
+        for _, row in dashboard.iterrows():
+            if pd.notna(row["pipeline_id"]) and pd.notna(row["run_id"]):
+                status = get_run_status(
+                    int(row["pipeline_id"]),
+                    int(row["run_id"]),
+                )
+
+                update_build_status(
+                    row["id"],
+                    status["state"],
+                    status["result"],
+                    status["url"] or row["build_url"],
+                    status["error"],
+                )
+
+        st.success("Collections build status refreshed.")
+
+    dashboard_df = get_deployments_by_date(selected_date)
+
+    if dashboard_df.empty:
+        st.info("No collections deployments found for selected date.")
+        return
+
+    st.dataframe(
+        dashboard_df,
+        use_container_width=True,
+        column_config={
+            "build_url": st.column_config.LinkColumn("Build", display_text="Open"),
+        },
+    )
+
+    dashboard_df.insert(0, "retrigger", False)
+
+    edited_dashboard_df = st.data_editor(
+        dashboard_df,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "retrigger": st.column_config.CheckboxColumn("Retrigger", default=False)
+        },
+    )
+
+    if st.button("Retrigger Selected Collection Services"):
+        selected_retry_df = edited_dashboard_df[
+            edited_dashboard_df["retrigger"] == True
+        ]
+
+        if selected_retry_df.empty:
+            st.warning("Select at least one service to retrigger.")
+        else:
+            for _, row in selected_retry_df.iterrows():
+                result = trigger_service(
+                    row["service_name"],
+                    row["vendor_image"],
+                    row["environment"],
+                    use_vendor_image,
+                )
+
+                insert_deployment(result)
+
+            st.success("Retrigger completed.")
+
+
 check_config()
 init_db()
 
@@ -138,32 +382,21 @@ extraction_type = st.radio(
     horizontal=True,
 )
 
-# Defaults used by Code Pull flow
 environment = None
 use_vendor_image = True
 
-# Show only for Collections/Image extraction flow
 if extraction_type == "Image Tag Extraction":
-    environment = st.selectbox(
-        "Environment",
-        list(PIPELINE_MAPPING.keys())
-    )
+    environment = st.selectbox("Environment", list(PIPELINE_MAPPING.keys()))
+    use_vendor_image = st.checkbox("useVendorImage", value=True)
 
-    use_vendor_image = st.checkbox(
-        "useVendorImage",
-        value=True
-    )
+use_ai_extractor = st.checkbox("Use AI Agent for unstructured documents", value=True)
 
-use_ai_extractor = st.checkbox(
-    "Use AI Agent for unstructured documents",
-    value=True
-)
+selected_date = st.date_input("Select activity date", value=date.today())
 
 uploaded_file = st.file_uploader(
     "Upload Release Document",
     type=["pdf", "docx"]
 )
-
 
 if uploaded_file and extraction_type == "Code Pull Extraction":
     document_text = extract_text_from_document(uploaded_file)
@@ -172,22 +405,21 @@ if uploaded_file and extraction_type == "Code Pull Extraction":
         try:
             code_pull_json = ai_extract_code_pull_details(document_text)
             st.session_state["code_pull_json"] = code_pull_json
-            st.success("Code pull details extracted.")
+            st.success("Code pull/build details extracted.")
         except Exception as exc:
             st.error(f"Code pull extraction failed: {str(exc)}")
 
     if "code_pull_json" in st.session_state:
-        st.subheader("Extracted Code Pull JSON")
+        st.subheader("Extracted Code Pull + Build JSON")
 
         json_text = st.text_area(
             "Validate / edit JSON before triggering code-pull pipeline",
             value=json.dumps(st.session_state["code_pull_json"], indent=2),
-            height=350,
+            height=400,
         )
 
         try:
             validated_json = json.loads(json_text)
-            st.success("JSON is valid")
             st.json(validated_json)
 
             items = validated_json.get("items", [])
@@ -195,8 +427,6 @@ if uploaded_file and extraction_type == "Code Pull Extraction":
             if not items:
                 st.warning("No code-pull items found in JSON.")
             else:
-                st.subheader("Code Pull Items")
-
                 item_df = pd.DataFrame(items)
                 item_df.insert(0, "Select", True)
 
@@ -212,41 +442,50 @@ if uploaded_file and extraction_type == "Code Pull Extraction":
 
                 selected_items_df = edited_items_df[edited_items_df["Select"] == True]
 
-                st.caption(
-                    "Code-pull pipeline parameters are APP, PROFINCH_BRANCH, and LIST_ONLY."
-                )
-
                 if st.button("Trigger Selected Code Pull Pipelines"):
-                    if selected_items_df.empty:
-                        st.warning("Select at least one code-pull item.")
-                    else:
-                        results = []
+                    results = []
 
-                        for _, row in selected_items_df.iterrows():
-                            item = row.drop(labels=["Select"]).to_dict()
+                    for _, row in selected_items_df.iterrows():
+                        item = row.drop(labels=["Select"]).to_dict()
 
-                            try:
-                                result = trigger_code_pull_pipeline_item(item)
-                                results.append({
-                                    "pipeline_application": item.get("pipeline_application"),
-                                    "branch_name": item.get("branch_name"),
-                                    "status": "triggered",
-                                    "run_id": result.get("id"),
-                                    "url": result.get("_links", {}).get("web", {}).get("href", ""),
-                                    "error": "",
-                                })
-                            except Exception as exc:
-                                results.append({
-                                    "pipeline_application": item.get("pipeline_application"),
-                                    "branch_name": item.get("branch_name"),
-                                    "status": "failed",
-                                    "run_id": "",
-                                    "url": "",
-                                    "error": str(exc),
-                                })
+                        try:
+                            pipeline_id, result = trigger_code_pull_pipeline_item(item)
 
-                        st.subheader("Code Pull Trigger Results")
-                        st.dataframe(pd.DataFrame(results), use_container_width=True)
+                            build_number = result.get("name", "")
+
+                            source_branch = build_created_branch_name(
+                                profinch_branch=item.get("branch_name"),
+                                build_number=build_number,
+                                app_name=item.get("pipeline_application"),
+                            )
+
+                            insert_code_pull_run(
+                                item=item,
+                                pipeline_id=pipeline_id,
+                                result=result,
+                                source_branch=source_branch,
+                                extracted_json=validated_json,
+                            )
+
+                            results.append({
+                                "app": item.get("pipeline_application"),
+                                "branch": item.get("branch_name"),
+                                "status": "triggered",
+                                "run_id": result.get("id"),
+                                "url": result.get("_links", {}).get("web", {}).get("href", ""),
+                                "error": "",
+                            })
+
+                        except Exception as exc:
+                            results.append({
+                                "app": item.get("pipeline_application"),
+                                "branch": item.get("branch_name"),
+                                "status": "failed",
+                                "error": str(exc),
+                            })
+
+                    st.subheader("Code Pull Trigger Results")
+                    st.dataframe(pd.DataFrame(results), use_container_width=True)
 
         except Exception as exc:
             st.error(f"Invalid JSON: {str(exc)}")
@@ -270,12 +509,8 @@ if uploaded_file and extraction_type == "Image Tag Extraction":
         except Exception as exc:
             st.error(f"AI extraction failed: {str(exc)}")
 
-    if not extracted_data:
-        st.warning("No image references found in document.")
-    else:
+    if extracted_data:
         df = pd.DataFrame(extracted_data)
-
-        st.success(f"Found {len(df)} services")
 
         edited_df = st.data_editor(
             df,
@@ -289,117 +524,23 @@ if uploaded_file and extraction_type == "Image Tag Extraction":
         selected_df = edited_df[edited_df["Select"] == True]
 
         if st.button("Trigger Selected Service Pipelines"):
-            if selected_df.empty:
-                st.warning("Select at least one service.")
-            else:
-                for _, row in selected_df.iterrows():
-                    result = trigger_service(
-                        service=row["Service"],
-                        vendor_image=row["vendorImage"],
-                        environment=environment,
-                        use_vendor_image=use_vendor_image,
-                    )
-
-                    insert_deployment(result)
-
-                st.success("Trigger request completed. Check dashboard below.")
-
-
-st.divider()
-st.subheader("Deployment Dashboard")
-
-selected_date = st.date_input(
-    "Select deployment date",
-    value=date.today(),
-)
-
-if st.button("Refresh Build Status"):
-    dashboard = get_deployments_by_date(selected_date)
-
-    for _, row in dashboard.iterrows():
-        if pd.notna(row["pipeline_id"]) and pd.notna(row["run_id"]):
-            status = get_run_status(
-                int(row["pipeline_id"]),
-                int(row["run_id"]),
-            )
-
-            update_build_status(
-                row["id"],
-                status["state"],
-                status["result"],
-                status["url"] or row["build_url"],
-                status["error"],
-            )
-
-    st.success("Build status refreshed.")
-
-
-dashboard_df = get_deployments_by_date(selected_date)
-
-if dashboard_df.empty:
-    st.info("No deployments found for selected date.")
-else:
-    dashboard_df.insert(0, "retrigger", False)
-
-    edited_dashboard_df = st.data_editor(
-        dashboard_df,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "retrigger": st.column_config.CheckboxColumn("Retrigger", default=False)
-        },
-    )
-
-    if st.button("Retrigger Selected Services"):
-        selected_retry_df = edited_dashboard_df[
-            edited_dashboard_df["retrigger"] == True
-        ]
-
-        if selected_retry_df.empty:
-            st.warning("Select at least one service to retrigger.")
-        else:
-            for _, row in selected_retry_df.iterrows():
+            for _, row in selected_df.iterrows():
                 result = trigger_service(
-                    row["service_name"],
-                    row["vendor_image"],
-                    row["environment"],
-                    use_vendor_image,
+                    service=row["Service"],
+                    vendor_image=row["vendorImage"],
+                    environment=environment,
+                    use_vendor_image=use_vendor_image,
                 )
 
                 insert_deployment(result)
 
-            st.success("Retrigger completed. Click Refresh Build Status.")
+            st.success("Trigger request completed.")
 
-    st.subheader("Build Links")
 
-    build_view = dashboard_df[
-        [
-            "service_name",
-            "run_id",
-            "build_state",
-            "build_result",
-            "build_url",
-        ]
-    ].dropna(subset=["run_id"])
+st.divider()
 
-    if not build_view.empty:
-        build_view = build_view.rename(
-            columns={
-                "service_name": "Service",
-                "run_id": "Build Run",
-                "build_state": "State",
-                "build_result": "Result",
-                "build_url": "Link",
-            }
-        )
+if extraction_type == "Code Pull Extraction":
+    render_gtb_dashboard(selected_date)
 
-        st.dataframe(
-            build_view,
-            use_container_width=True,
-            column_config={
-                "Link": st.column_config.LinkColumn("Link", display_text="Open")
-            },
-        )
-    else:
-        st.info("No build links found.")
-
+if extraction_type == "Image Tag Extraction":
+    render_collections_dashboard(selected_date, use_vendor_image)
