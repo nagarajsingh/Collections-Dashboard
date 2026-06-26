@@ -1,0 +1,22 @@
+{
+  "moc": {
+    "pipeline_name": "moc-build-pipeline",
+    "pipeline_id": "",
+    "parameters": {
+      "branch": "branch",
+      "war_files": "war_files",
+      "jar_files": "jar_files",
+      "deploy_type": "deploy_type"
+    }
+  },
+  "obtfpm": {
+    "pipeline_name": "obtfpm-build-pipeline",
+    "pipeline_id": "",
+    "parameters": {
+      "branch": "branch",
+      "war_files": "war_files",
+      "jar_files": "jar_files",
+      "deploy_type": "deploy_type"
+    }
+  }
+}
