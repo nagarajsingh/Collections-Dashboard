@@ -158,311 +158,113 @@ Valid pipeline_application values:
 - obp-t24
 - obp-t24-kernel
 
-General extraction rules:
+General rules:
+1. Return one item per Repo Name / Branch Name block.
+2. If Repo Name is missing but a clear application and sync branch is present, still create one item.
+3. Extract branch_name from Branch Name, Profinch Branch, Deployment Steps, or sync instruction.
+4. Extract environment from Environment, build release, deployment target, or deployment steps.
+5. Extract azure_commit_id from Azure Commit ID or any 40-character commit SHA.
+6. Extract WAR and JAR files from the same application/repository block only.
+7. war_files must contain .war files comma-separated, or "None".
+8. jar_files must contain .jar files comma-separated, or "None".
+9. deploy_type is "Regular" unless document explicitly says "NewSetup".
 
-1. Multiple repository blocks may exist. Create one item per Repo Name / Branch Name block.
+Application mapping:
+- Repo/document contains MOCORE -> pipeline_application "moc".
+- Repo/document contains OBTFPM -> pipeline_application "obtfpm".
+- Repo/document contains CMNCORE or COMMONCORE -> pipeline_application "cmncore".
+- Repo/document contains PLATO -> pipeline_application "plato".
+- Repo/document contains OBDX or Oracle Banking Digital Experience -> pipeline_application "obdx".
+- Repo/document contains OBTF or Oracle Banking Trade Finance -> pipeline_application "obtf".
+- Repo/document contains OBP or Oracle Banking Payment -> pipeline_application "obp".
+- Repo/document contains OBLM -> pipeline_application "oblm".
+- Repo/document contains OBLMIC or OBLM-IC -> pipeline_application "oblmic".
+- Repo/document contains OBVAM -> pipeline_application "obvam".
+- Repo/document contains OBVAMIC or OBVAM-IC -> pipeline_application "obvamic".
 
-2. Extract:
-   - application_name from Product Name, Project Name, Services, document title.
-   - repository_name from Repo Name.
-   - branch_name from Branch Name, Profinch Branch, Deployment Steps, or sync instruction.
-   - environment from Environment, build release, deployment target, or deployment steps.
-   - code_base_version from Code Base Version, Version, or Release version.
-   - azure_commit_id from Azure Commit ID or any 40-character commit SHA.
-   - change_type from CUSTOMIZATION, Custom, KERNEL, DB, UI, Config, etc.
+Kernel/custom override:
+- If application is OBTF and text or branch contains KERNEL, MOS, kernel branch, or OBTF Kernel -> pipeline_application "obtf-kernel".
+- If application is OBP and text or branch contains KERNEL, MOS, kernel branch, or OBP Kernel -> pipeline_application "obp-kernel".
+- If text contains CUSTOMIZATION, Custom, Custom Fix, Mashreq Customizations -> application_type "custom".
+- If text contains KERNEL, Kernel Fix, MOS branch -> application_type "kernel".
+- If neither is clear -> application_type "standard".
 
-3. pipeline_application mapping:
-   - If repo contains MOCORE, use "moc".
-   - If repo contains OBTFPM, use "obtfpm".
-   - If repo contains CMNCORE or COMMONCORE, use "cmncore".
-   - If repo contains PLATO, use "plato".
-   - OBTF custom -> obtf.
-   - OBTF kernel -> obtf-kernel.
-   - OBP custom -> obp.
-   - OBP kernel -> obp-kernel.
-   - OBLM -> oblm.
-   - OBLMIC or OBLM-IC -> oblmic.
-   - OBVAM -> obvam.
-   - OBVAMIC or OBVAM-IC -> obvamic.
+Exact build_branch mapping:
+- obtf:
+  UAT or R2UAT -> release/uat
+  PREPROD or PPR -> release/ppr
+  T24 or T24-UAT -> release/t24
+  PROD -> release/prod
+  OMSIT -> release/omsit
 
-4. application_type:
-   - If CUSTOMIZATION, Custom, Custom fix, use "custom".
-   - If KERNEL or Kernel fixes, use "kernel".
-   - Otherwise use "standard".
+- obtf-kernel:
+  T24 or T24-UAT -> release/mos-t24uat
+  UAT or R2UAT -> release/mos
+  PREPROD or PPR -> release/mos-preprod
+  PROD -> release/mos-preprod
+  OMSIT -> release/mos
 
-5. build_branch:
-   - R2UAT or UAT -> release/uat.
-   - T24-UAT or T24 -> release/t24.
-   - PREPROD or PPR -> release/ppr.
-   - PROD -> release/prod.
-   - OMSIT -> release/omsit.
-   - SIT -> release/sit.
-   - TXCSIT -> release/txcsit.
+- obp-kernel:
+  T24 or T24-UAT -> release/most24
+  UAT or R2UAT -> release/mos
+  PREPROD or PPR -> release/mos-preprod
+  PROD -> release/mos-prod-hk
+  OMSIT -> release/mos-omsit
 
-6. WAR/JAR extraction:
-   - Extract WAR files only from the same repository/application block.
-   - Extract JAR files only from the same repository/application block.
-   - Include filenames ending with .war in war_files.
-   - Include filenames ending with .jar in jar_files.
-   - If no WAR files for that block, war_files = "None".
-   - If no JAR files for that block, jar_files = "None".
-   - Separate multiple files with comma and space.
-   - Do not mix files from another Repo Name block.
+- obp:
+  UAT or R2UAT -> release/uat
+  PREPROD or PPR -> release/ppr
+  T24 or T24-UAT -> release/t24
+  PROD -> release/prod
+  OMSIT -> release/omsit
 
-7. deploy_type:
-   - Use "Regular" by default.
-   - Use "NewSetup" only if document explicitly mentions NewSetup.
+- obtfpm, moc, plato, cmncore, obdx, oblm:
+  UAT or R2UAT -> release/uat
+  PREPROD or PPR -> release/ppr
+  T24 or T24-UAT -> release/t24
+  OMSIT -> release/omsit
+  PROD -> release/prod
 
-OBP special rules:
+- oblmic, obvam, obvamic:
+  UAT or R2UAT -> release/uat
+  PREPROD or PPR -> release/ppr
+  T24 or T24-UAT -> release/t24
+  PROD -> release/prod
 
-8. If document contains Project Name as Oracle Banking Payment or Services as OBP, create an item for OBP even if Repo Name is missing.
+OBP special:
+- If document says Oracle Banking Payment, OBP Release Document, or Services OBP, create OBP item even if Repo Name is missing.
+- Extract branch from sentence like:
+  DevOps Team will sync the OBP_Kernel_Hotfix_T24_USUKHK from the Profinch to Mashreq Env.
+- Expected branch_name = OBP_Kernel_Hotfix_T24_USUKHK.
+- If KERNEL is present, use pipeline_application "obp-kernel".
 
-9. For OBP documents, branch_name may come from Deployment Steps sentence.
-   Example:
-   "DevOps Team will sync the OBP_Kernel_Hotfix_T24_USUKHK from the Profinch to Mashreq Env."
-   Extract:
-   branch_name = OBP_Kernel_Hotfix_T24_USUKHK
+OBDX special:
+- If document says OBDX, Oracle Banking Digital Experience, or repo has OBDX, create OBDX item.
+- If Branch Name exists, use it.
+- If sync instruction exists, extract branch from sync sentence.
+- If no WAR/JAR exists, set both to "None".
 
-10. If OBP document mentions KERNEL, Kernel fixes, or OBP_Kernel branch:
-    pipeline_application = "obp-kernel"
-    application_type = "kernel"
-    change_type = "KERNEL"
+OBTF special:
+- If document says OBTF, Oracle Banking Trade Finance, or repo has OBTF, create OBTF item.
+- If KERNEL/MOS is present, use "obtf-kernel".
+- If CUSTOMIZATION/Custom Fix is present and kernel is not present, use "obtf".
+- Extract all .war and .jar files from the same OBTF block.
 
-11. If OBP document mentions Custom or CUSTOMIZATION and does not mention kernel:
-    pipeline_application = "obp"
-    application_type = "custom"
+OBTFPM/MOC special:
+- If Product Name is OBTFPM but repo name is MOCORE_14.7_Mashreq_Customizations, pipeline_application must be "moc".
+- If Product Name is OBTFPM and repo name is OBTFPM_14.7_Mashreq_Customizations, pipeline_application must be "obtfpm".
+- If Product Name is OBTFPM and repo name is CMNCORE or COMMONCORE, pipeline_application must be "cmncore".
+- If Product Name is OBTFPM and repo name is PLATO, pipeline_application must be "plato".
+- Return separate items for each Repo Name / Branch Name block.
 
-12. If OBP document mentions T24-UAT or T24 environment:
-    build_branch = "release/t24"
+Confidence:
+- high if pipeline_application and branch_name are clearly found.
+- medium if one field is inferred.
+- low if important values are missing.
 
-13. If OBP document mentions UAT but not T24:
-    build_branch = "release/uat"
+If no valid item found, return:
+{{"items": []}}
 
-14. If OBP document has no WAR/JAR files:
-    war_files = "None"
-    jar_files = "None"
-
-15. For this OBP sample pattern:
-    Services: OBP
-    Release 5.12.60
-    Azure Commit ID: 27d1552723128d6dfac48fa53330116b9e1bb223
-    Deployment Steps: sync OBP_Kernel_Hotfix_T24_USUKHK
-    Expected:
-    application_name = "OBP"
-    pipeline_application = "obp-kernel"
-    branch_name = "OBP_Kernel_Hotfix_T24_USUKHK"
-    build_branch = "release/t24"
-    war_files = "None"
-    jar_files = "None"
-
-16. confidence:
-    - high if pipeline_application and branch_name are clearly found.
-    - medium if one field is inferred.
-    - low if important values are missing.
-
-17. notes:
-    - Mention missing, inferred, or ambiguous values.
-
-18. If no valid item found, return:
-    {{"items": []}}
-OBDX special rules:
-
-19. If document contains Product Name, Project Name, Services, title, or repo name related to:
-    OBDX, Oracle Banking Digital Experience, Digital Experience, obdx
-    then create an item for OBDX.
-
-20. If repository_name contains OBDX, OBDX_14, OBDX_14.7, or obdx customization repo:
-    pipeline_application = "obdx"
-
-21. If document has Repo Name and Branch Name block for OBDX:
-    Extract one item using:
-    repository_name = Repo Name value
-    branch_name = Branch Name value
-    pipeline_application = "obdx"
-
-22. If document has no Repo Name but Deployment Steps mention sync branch for OBDX:
-    Extract branch_name from the sync instruction.
-    Example:
-    "DevOps Team will sync OBDX_Custom_Fix_Branch from Profinch to Mashreq Env"
-    branch_name = OBDX_Custom_Fix_Branch
-
-23. If OBDX document mentions CUSTOMIZATION, Custom, Custom fix:
-    application_type = "custom"
-    change_type = "CUSTOM"
-
-24. If OBDX document has WAR/JAR files:
-    Extract them from the same OBDX block.
-    war_files = comma-separated .war files
-    jar_files = comma-separated .jar files
-
-25. If OBDX document has no WAR/JAR files:
-    war_files = "None"
-    jar_files = "None"
-
-26. For OBDX, build_branch mapping:
-    R2UAT or UAT -> release/uat
-    T24-UAT or T24 -> release/t24
-    PREPROD or PPR -> release/ppr
-    PROD -> release/prod
-    OMSIT -> release/omsit
-    SIT -> release/sit
-    TXCSIT -> release/txcsit
-OBTF special rules:
-
-27. If document contains Product Name, Project Name, Services, title, or repository related to:
-    OBTF, Oracle Banking Trade Finance, Trade Finance, obtf
-    then create an item for OBTF.
-
-28. If repository_name contains:
-    OBTF
-    OBTF_14
-    OBTF_14.7
-    OBTF_Mashreq_Customizations
-    then pipeline_application = "obtf".
-
-29. If document mentions:
-    KERNEL
-    Kernel Fix
-    OBTF Kernel
-    kernel branch
-    MOS branch
-    then:
-        pipeline_application = "obtf-kernel"
-        application_type = "kernel"
-        change_type = "KERNEL"
-
-30. If document mentions:
-    CUSTOMIZATION
-    Custom
-    Custom Fix
-    Mashreq Customizations
-    then:
-        pipeline_application = "obtf"
-        application_type = "custom"
-        change_type = "CUSTOM"
-
-31. If document contains multiple Repo Name / Branch Name blocks:
-    create one item for each block.
-
-32. If Deployment Steps contain sync instructions such as:
-    "DevOps Team will sync OBTF_Kernel_Hotfix from Profinch to Mashreq Env"
-    then extract:
-        branch_name = OBTF_Kernel_Hotfix
-
-33. If branch name itself contains:
-    kernel
-    Kernel
-    mos
-    MOS
-    then override:
-        pipeline_application = "obtf-kernel"
-        application_type = "kernel"
-
-34. WAR/JAR extraction for OBTF:
-    - Extract WAR files only from the same OBTF repository block.
-    - Extract JAR files only from the same OBTF repository block.
-    - Multiple files should be comma separated.
-    - If no WAR files exist:
-          war_files = "None"
-    - If no JAR files exist:
-          jar_files = "None"
-
-35. Build branch mapping for OBTF:
-    R2UAT or UAT      -> release/uat
-    T24 or T24-UAT    -> release/t24
-    PREPROD or PPR    -> release/ppr
-    PROD              -> release/prod
-    OMSIT             -> release/omsit
-    SIT               -> release/sit
-    TXCSIT            -> release/txcsit
-
-36. Example:
-
-Product Name: OBTF
-Environment: R2UAT
-Development: CUSTOMIZATION
-Repo Name: OBTF_14.7_Mashreq_Customizations
-Branch Name: hotfix_branch_14.7.0.1.0
-WAR:
-    trade-finance-services.war
-JAR:
-    obtf-extn.jar
-
-Expected:
-
-{
-  "application_name": "OBTF",
-  "pipeline_application": "obtf",
-  "application_type": "custom",
-  "repository_name": "OBTF_14.7_Mashreq_Customizations",
-  "branch_name": "hotfix_branch_14.7.0.1.0",
-  "environment": "R2UAT",
-  "build_branch": "release/uat",
-  "war_files": "trade-finance-services.war",
-  "jar_files": "obtf-extn.jar"
-}
-
-37. Example for kernel:
-
-Product Name: OBTF
-Development: KERNEL
-Branch Name: OBTF_Kernel_Hotfix_T24
-
-Expected:
-
-{
-  "pipeline_application": "obtf-kernel",
-  "application_type": "kernel",
-  "branch_name": "OBTF_Kernel_Hotfix_T24"
-}
-
-Build branch mapping:
-
-For OBTF custom / OBTF-R2:
-UAT or R2UAT -> release/uat
-PREPROD or PPR -> release/ppr
-T24 or T24-UAT -> release/t24
-PROD -> release/prod
-OMSIT -> release/omsit
-
-For OBTF-KERNEL:
-T24 or T24-UAT -> release/mos-t24uat
-UAT or R2UAT -> release/mos
-PREPROD or PPR -> release/mos-preprod
-PROD -> release/mos-preprod
-OMSIT -> release/mos
-
-For OBP-KERNEL:
-T24 or T24-UAT -> release/most24
-UAT or R2UAT -> release/mos
-PREPROD or PPR -> release/mos-preprod
-PROD -> release/mos-prod-hk
-OMSIT -> release/mos-omsit
-
-For OBTFPM, MOC, PLATO, CMNCORE/COMMONCORE, OBLM:
-UAT or R2UAT -> release/uat
-PREPROD or PPR -> release/ppr
-T24 or T24-UAT -> release/t24
-OMSIT -> release/omsit
-PROD -> release/prod
-
-For OBLMIC / OBLM-IC:
-UAT or R2UAT -> release/uat
-PREPROD or PPR -> release/ppr
-T24 or T24-UAT -> release/t24
-PROD -> release/prod
-
-For OBVAM:
-UAT or R2UAT -> release/uat
-PREPROD or PPR -> release/ppr
-T24 or T24-UAT -> release/t24
-PROD -> release/prod
-
-For OBVAMIC / OBVAM-IC:
-UAT or R2UAT -> release/uat
-PREPROD or PPR -> release/ppr
-T24 or T24-UAT -> release/t24
-PROD -> release/prod
 Document text:
 {document_text}
 """
