@@ -33,6 +33,7 @@ from database import (
     insert_build_run,
     get_build_runs_by_date,
     update_build_run_status,
+    get_all_code_pull_runs_with_pr,
 )
 from pdf_utils import (
     extract_services_from_document,
@@ -220,8 +221,8 @@ def refresh_build_status(selected_date):
         )
 
 
-def refresh_pr_status(selected_date):
-    df = get_code_pull_runs_by_date(selected_date)
+def refresh_pr_status(selected_date=None):
+    df = get_all_code_pull_runs_with_pr()
 
     for _, row in df.iterrows():
         pr_id = row.get("pr_id")
