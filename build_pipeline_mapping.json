@@ -1,6 +1,6 @@
 {
   "moc": {
-    "pipeline_name": "moc-build-pipeline",
+    "pipeline_name": "new-moc-build-pipeline",
     "pipeline_id": "",
     "parameters": {
       "branch": "branch",
@@ -10,7 +10,7 @@
     }
   },
   "obtfpm": {
-    "pipeline_name": "obtfpm-build-pipeline",
+    "pipeline_name": "new-obtfpm-build-pipeline",
     "pipeline_id": "",
     "parameters": {
       "branch": "branch",
