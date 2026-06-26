@@ -12,6 +12,8 @@ COPY database.py .
 COPY pdf_utils.py .
 COPY pipeline_mapping.json .
 COPY build_pipeline_mapping.json .
+COPY repo_mapping.json .
+COPY pr_branch_mapping.json .
 
 EXPOSE 8501
 
