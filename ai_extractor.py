@@ -193,7 +193,7 @@ General extraction rules:
 5. build_branch:
    - R2UAT or UAT -> release/uat.
    - T24-UAT or T24 -> release/t24.
-   - PREPROD or PPR -> release/preprod.
+   - PREPROD or PPR -> release/ppr.
    - PROD -> release/prod.
    - OMSIT -> release/omsit.
    - SIT -> release/sit.
@@ -265,7 +265,204 @@ OBP special rules:
 
 18. If no valid item found, return:
     {{"items": []}}
+OBDX special rules:
 
+19. If document contains Product Name, Project Name, Services, title, or repo name related to:
+    OBDX, Oracle Banking Digital Experience, Digital Experience, obdx
+    then create an item for OBDX.
+
+20. If repository_name contains OBDX, OBDX_14, OBDX_14.7, or obdx customization repo:
+    pipeline_application = "obdx"
+
+21. If document has Repo Name and Branch Name block for OBDX:
+    Extract one item using:
+    repository_name = Repo Name value
+    branch_name = Branch Name value
+    pipeline_application = "obdx"
+
+22. If document has no Repo Name but Deployment Steps mention sync branch for OBDX:
+    Extract branch_name from the sync instruction.
+    Example:
+    "DevOps Team will sync OBDX_Custom_Fix_Branch from Profinch to Mashreq Env"
+    branch_name = OBDX_Custom_Fix_Branch
+
+23. If OBDX document mentions CUSTOMIZATION, Custom, Custom fix:
+    application_type = "custom"
+    change_type = "CUSTOM"
+
+24. If OBDX document has WAR/JAR files:
+    Extract them from the same OBDX block.
+    war_files = comma-separated .war files
+    jar_files = comma-separated .jar files
+
+25. If OBDX document has no WAR/JAR files:
+    war_files = "None"
+    jar_files = "None"
+
+26. For OBDX, build_branch mapping:
+    R2UAT or UAT -> release/uat
+    T24-UAT or T24 -> release/t24
+    PREPROD or PPR -> release/ppr
+    PROD -> release/prod
+    OMSIT -> release/omsit
+    SIT -> release/sit
+    TXCSIT -> release/txcsit
+OBTF special rules:
+
+27. If document contains Product Name, Project Name, Services, title, or repository related to:
+    OBTF, Oracle Banking Trade Finance, Trade Finance, obtf
+    then create an item for OBTF.
+
+28. If repository_name contains:
+    OBTF
+    OBTF_14
+    OBTF_14.7
+    OBTF_Mashreq_Customizations
+    then pipeline_application = "obtf".
+
+29. If document mentions:
+    KERNEL
+    Kernel Fix
+    OBTF Kernel
+    kernel branch
+    MOS branch
+    then:
+        pipeline_application = "obtf-kernel"
+        application_type = "kernel"
+        change_type = "KERNEL"
+
+30. If document mentions:
+    CUSTOMIZATION
+    Custom
+    Custom Fix
+    Mashreq Customizations
+    then:
+        pipeline_application = "obtf"
+        application_type = "custom"
+        change_type = "CUSTOM"
+
+31. If document contains multiple Repo Name / Branch Name blocks:
+    create one item for each block.
+
+32. If Deployment Steps contain sync instructions such as:
+    "DevOps Team will sync OBTF_Kernel_Hotfix from Profinch to Mashreq Env"
+    then extract:
+        branch_name = OBTF_Kernel_Hotfix
+
+33. If branch name itself contains:
+    kernel
+    Kernel
+    mos
+    MOS
+    then override:
+        pipeline_application = "obtf-kernel"
+        application_type = "kernel"
+
+34. WAR/JAR extraction for OBTF:
+    - Extract WAR files only from the same OBTF repository block.
+    - Extract JAR files only from the same OBTF repository block.
+    - Multiple files should be comma separated.
+    - If no WAR files exist:
+          war_files = "None"
+    - If no JAR files exist:
+          jar_files = "None"
+
+35. Build branch mapping for OBTF:
+    R2UAT or UAT      -> release/uat
+    T24 or T24-UAT    -> release/t24
+    PREPROD or PPR    -> release/ppr
+    PROD              -> release/prod
+    OMSIT             -> release/omsit
+    SIT               -> release/sit
+    TXCSIT            -> release/txcsit
+
+36. Example:
+
+Product Name: OBTF
+Environment: R2UAT
+Development: CUSTOMIZATION
+Repo Name: OBTF_14.7_Mashreq_Customizations
+Branch Name: hotfix_branch_14.7.0.1.0
+WAR:
+    trade-finance-services.war
+JAR:
+    obtf-extn.jar
+
+Expected:
+
+{
+  "application_name": "OBTF",
+  "pipeline_application": "obtf",
+  "application_type": "custom",
+  "repository_name": "OBTF_14.7_Mashreq_Customizations",
+  "branch_name": "hotfix_branch_14.7.0.1.0",
+  "environment": "R2UAT",
+  "build_branch": "release/uat",
+  "war_files": "trade-finance-services.war",
+  "jar_files": "obtf-extn.jar"
+}
+
+37. Example for kernel:
+
+Product Name: OBTF
+Development: KERNEL
+Branch Name: OBTF_Kernel_Hotfix_T24
+
+Expected:
+
+{
+  "pipeline_application": "obtf-kernel",
+  "application_type": "kernel",
+  "branch_name": "OBTF_Kernel_Hotfix_T24"
+}
+
+Build branch mapping:
+
+For OBTF custom / OBTF-R2:
+UAT or R2UAT -> release/uat
+PREPROD or PPR -> release/ppr
+T24 or T24-UAT -> release/t24
+PROD -> release/prod
+OMSIT -> release/omsit
+
+For OBTF-KERNEL:
+T24 or T24-UAT -> release/mos-t24uat
+UAT or R2UAT -> release/mos
+PREPROD or PPR -> release/mos-preprod
+PROD -> release/mos-preprod
+OMSIT -> release/mos
+
+For OBP-KERNEL:
+T24 or T24-UAT -> release/most24
+UAT or R2UAT -> release/mos
+PREPROD or PPR -> release/mos-preprod
+PROD -> release/mos-prod-hk
+OMSIT -> release/mos-omsit
+
+For OBTFPM, MOC, PLATO, CMNCORE/COMMONCORE, OBLM:
+UAT or R2UAT -> release/uat
+PREPROD or PPR -> release/ppr
+T24 or T24-UAT -> release/t24
+OMSIT -> release/omsit
+PROD -> release/prod
+
+For OBLMIC / OBLM-IC:
+UAT or R2UAT -> release/uat
+PREPROD or PPR -> release/ppr
+T24 or T24-UAT -> release/t24
+PROD -> release/prod
+
+For OBVAM:
+UAT or R2UAT -> release/uat
+PREPROD or PPR -> release/ppr
+T24 or T24-UAT -> release/t24
+PROD -> release/prod
+
+For OBVAMIC / OBVAM-IC:
+UAT or R2UAT -> release/uat
+PREPROD or PPR -> release/ppr
+T24 or T24-UAT -> release/t24
+PROD -> release/prod
 Document text:
 {document_text}
 """
