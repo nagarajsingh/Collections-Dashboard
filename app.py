@@ -84,10 +84,16 @@ def check_config():
 def normalize_env(env):
     env = str(env or "").strip().lower()
 
+    normalized_env = (
+        env.replace("-", "")
+           .replace("_", "")
+           .replace(" ", "")
+    )
+
     aliases = {
-        "r2uat": "uat",
+        "r2uat": "r2uat",
         "uat": "uat",
-        "preprod": "ppr",
+        "preprod": "preprod",
         "ppr": "ppr",
         "t24": "t24",
         "prod": "prod",
@@ -97,7 +103,7 @@ def normalize_env(env):
         "txcsit": "txcsit",
     }
 
-    return aliases.get(env, env)
+    return aliases.get(normalized_env, normalized_env)
 
 
 def trigger_service(service, vendor_image, environment, use_vendor_image):
@@ -578,6 +584,7 @@ def render_gtb_dashboard(selected_date):
             },
         )
 
+
 def filter_collection_services(extracted_data, environment):
     allowed_services = set(PIPELINE_MAPPING.get(environment, {}).keys())
 
@@ -593,6 +600,8 @@ def filter_collection_services(extracted_data, environment):
             filtered.append(item)
 
     return filtered
+
+
 def render_collections_dashboard(selected_date, use_vendor_image):
     st.subheader("Collections Deployment Dashboard")
 
