@@ -18,6 +18,7 @@ from azure_devops import (
     get_run_status,
     build_created_branch_name,
     create_pull_request,
+    find_active_pull_request,
     get_pull_request_details,
     normalize_artifact_names,
 )
@@ -448,6 +449,46 @@ def render_gtb_dashboard(selected_date):
 
                 except Exception as exc:
                     error = str(exc)
+
+                    if "TF401179" in error or "GitPullRequestExistsException" in error:
+                        try:
+                            existing_pr = find_active_pull_request(
+                                repo_name=repo_name,
+                                source_branch=source_branch,
+                                target_branch=target_branch,
+                            )
+
+                            if existing_pr:
+                                pr_url = existing_pr.get("_links", {}).get("web", {}).get("href", "")
+                                pr_status = existing_pr.get("status", "active")
+                                pr_id = existing_pr.get("pullRequestId")
+
+                                update_code_pull_pr(
+                                    row_id=row_id,
+                                    pr_url=pr_url,
+                                    pr_status=pr_status,
+                                    pr_review_status="pending",
+                                    error="Existing active PR found and linked.",
+                                    pr_id=pr_id,
+                                    repo_name=repo_name,
+                                    pr_target_branch=target_branch,
+                                )
+
+                                pr_results.append({
+                                    "app": app,
+                                    "repo": repo_name,
+                                    "target_branch": target_branch,
+                                    "status": "existing_pr_linked",
+                                    "pr_id": pr_id,
+                                    "url": pr_url,
+                                    "error": "",
+                                })
+
+                                continue
+
+                        except Exception as lookup_exc:
+                            error = f"{error} | Existing PR lookup failed: {str(lookup_exc)}"
+
                     update_code_pull_pr(
                         row_id=row_id,
                         pr_url="",
@@ -458,6 +499,9 @@ def render_gtb_dashboard(selected_date):
                         pr_target_branch=target_branch,
                     )
                     pr_results.append({"app": app, "status": "failed", "error": error})
+
+            refresh_pr_status(selected_date)
+            code_pull_df = get_code_pull_runs_by_date(selected_date)
 
             st.dataframe(pd.DataFrame(pr_results), use_container_width=True)
 
