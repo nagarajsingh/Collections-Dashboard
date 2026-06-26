@@ -143,6 +143,7 @@ def get_deployments_by_date(selected_date):
                 vendor_image,
                 environment,
                 pipeline_name,
+                pipeline_id,
                 run_id,
                 build_state,
                 build_result,
@@ -157,7 +158,6 @@ def get_deployments_by_date(selected_date):
         get_engine(),
         params={"selected_date": selected_date},
     )
-
 
 def update_build_status(row_id, state, result, url, error):
     with get_engine().begin() as conn:
