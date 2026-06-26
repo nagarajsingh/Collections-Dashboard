@@ -402,7 +402,24 @@ def get_build_runs_by_date(selected_date):
         get_engine(),
         params={"selected_date": selected_date},
     )
-
+def get_all_code_pull_runs_with_pr():
+    return pd.read_sql(
+        text("""
+            SELECT
+                id,
+                pipeline_application,
+                repo_name,
+                pr_id,
+                pr_url,
+                pr_status,
+                pr_review_status,
+                pr_target_branch
+            FROM code_pull_runs
+            WHERE pr_id IS NOT NULL
+            ORDER BY created_at DESC
+        """),
+        get_engine(),
+    )
 
 def update_build_run_status(row_id, status, result, run_url, error):
     with get_engine().begin() as conn:
