@@ -212,6 +212,13 @@ def build_created_branch_name(profinch_branch, build_number, app_name):
     return f"profinch/{profinch_branch}-{build_number}-{app_name}"
 
 
+def build_pr_web_url(repo_name, pr_id):
+    return (
+        f"https://dev.azure.com/{ORG}/{PROJECT}/_git/{repo_name}"
+        f"/pullrequest/{pr_id}"
+    )
+
+
 def create_pull_request(repo_name, source_branch, target_branch, title, description):
     url = (
         f"https://dev.azure.com/{ORG}/{PROJECT}"
@@ -237,7 +244,13 @@ def create_pull_request(repo_name, source_branch, target_branch, title, descript
     if response.status_code not in [200, 201]:
         raise Exception(response.text)
 
-    return response.json()
+    data = response.json()
+    pr_id = data.get("pullRequestId")
+
+    if pr_id and not data.get("_links", {}).get("web", {}).get("href", ""):
+        data.setdefault("_links", {}).setdefault("web", {})["href"] = build_pr_web_url(repo_name, pr_id)
+
+    return data
 
 
 def find_active_pull_request(repo_name, source_branch, target_branch):
@@ -258,7 +271,13 @@ def find_active_pull_request(repo_name, source_branch, target_branch):
     prs = response.json().get("value", [])
 
     if prs:
-        return prs[0]
+        pr = prs[0]
+        pr_id = pr.get("pullRequestId")
+
+        if pr_id and not pr.get("_links", {}).get("web", {}).get("href", ""):
+            pr.setdefault("_links", {}).setdefault("web", {})["href"] = build_pr_web_url(repo_name, pr_id)
+
+        return pr
 
     return None
 
@@ -276,7 +295,7 @@ def get_pull_request_details(repo_name, pr_id):
         return {
             "status": "unknown",
             "review_status": "unknown",
-            "url": "",
+            "url": build_pr_web_url(repo_name, pr_id),
             "error": response.text,
         }
 
@@ -294,6 +313,6 @@ def get_pull_request_details(repo_name, pr_id):
     return {
         "status": data.get("status", ""),
         "review_status": review_status,
-        "url": data.get("_links", {}).get("web", {}).get("href", ""),
+        "url": data.get("_links", {}).get("web", {}).get("href", "") or build_pr_web_url(repo_name, pr_id),
         "error": "",
     }
