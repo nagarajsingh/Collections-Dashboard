@@ -44,7 +44,141 @@ from pdf_utils import (
 load_dotenv()
 
 st.set_page_config(page_title="AI Document Extractor", layout="wide")
-st.title("AI Document Extractor")
+
+
+def inject_premium_css():
+    st.markdown("""
+    <style>
+        .stApp {
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+        }
+
+        .main-header {
+            padding: 28px;
+            border-radius: 22px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+            color: white;
+            margin-bottom: 24px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+        }
+
+        .main-header h1 {
+            margin: 0;
+            font-size: 36px;
+            font-weight: 850;
+            letter-spacing: -0.5px;
+        }
+
+        .main-header p {
+            margin-top: 10px;
+            color: #dbeafe;
+            font-size: 15px;
+        }
+
+        .section-card {
+            background: rgba(255, 255, 255, 0.92);
+            padding: 18px;
+            border-radius: 18px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+            margin-bottom: 18px;
+        }
+
+        div[data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 18px;
+            border-radius: 18px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+        }
+
+        .stButton > button {
+            border-radius: 12px;
+            font-weight: 700;
+            border: 0;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+            padding: 0.6rem 1rem;
+        }
+
+        .stButton > button:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+            color: white;
+        }
+
+        div[data-testid="stDataFrame"] {
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+        }
+
+        section[data-testid="stSidebar"] {
+            background: #0f172a;
+        }
+
+        section[data-testid="stSidebar"] * {
+            color: #f8fafc;
+        }
+
+        section[data-testid="stSidebar"] .stSelectbox label,
+        section[data-testid="stSidebar"] .stRadio label,
+        section[data-testid="stSidebar"] .stCheckbox label,
+        section[data-testid="stSidebar"] .stDateInput label,
+        section[data-testid="stSidebar"] .stFileUploader label {
+            color: #f8fafc !important;
+            font-weight: 700;
+        }
+
+        h2, h3 {
+            color: #0f172a;
+            font-weight: 800;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_main_header(extraction_type):
+    if extraction_type == "Code Pull Extraction":
+        title = "GTB Application Deployment"
+        subtitle = "AI-powered release extraction, code-pull orchestration, PR tracking, and build pipeline control."
+    else:
+        title = "Collections Deployment Dashboard"
+        subtitle = "Extract container images from release documents and trigger collection service pipelines."
+
+    st.markdown(f"""
+    <div class="main-header">
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def status_badge(value):
+    value = str(value or "").strip()
+    lower_value = value.lower()
+
+    if lower_value in ["succeeded", "completed", "approved", "active"]:
+        return f"✅ {value}"
+    if lower_value in ["failed", "rejected", "abandoned", "cancelled", "canceled"]:
+        return f"❌ {value}"
+    if lower_value in ["pending", "inprogress", "inprogress", "running"]:
+        return f"🟡 {value}"
+
+    return value
+
+
+def apply_status_badges(df):
+    display_df = df.copy()
+
+    for col in ["result", "status", "pr_status", "pr_review_status", "build_result", "build_state"]:
+        if col in display_df.columns:
+            display_df[col] = display_df[col].apply(status_badge)
+
+    return display_df
+
+
+inject_premium_css()
 
 with open("pipeline_mapping.json", "r", encoding="utf-8") as f:
     PIPELINE_MAPPING = json.load(f)
@@ -247,9 +381,9 @@ def refresh_pr_status(selected_date=None):
 
 
 def render_gtb_dashboard(selected_date):
-    st.subheader("GTB Application Deployment")
+    st.subheader("Deployment Control Center")
 
-    if st.button("Get / Refresh Code Pull, PR and Build Status"):
+    if st.button("🔄 Get / Refresh Code Pull, PR and Build Status"):
         refresh_code_pull_status(selected_date)
         refresh_pr_status(selected_date)
         refresh_build_status(selected_date)
@@ -258,376 +392,410 @@ def render_gtb_dashboard(selected_date):
     code_pull_df = get_code_pull_runs_by_date(selected_date)
     build_df = get_build_runs_by_date(selected_date)
 
-    st.markdown("### Code Pull Status")
+    total_code_pull = len(code_pull_df)
+    total_pr = code_pull_df["pr_id"].notna().sum() if not code_pull_df.empty and "pr_id" in code_pull_df.columns else 0
+    total_build = len(build_df)
+    total_failures = 0
 
-    if code_pull_df.empty:
-        st.info("No code-pull runs found for selected date.")
-    else:
-        code_pull_cols = [
-            "activity_date",
-            "id",
-            "pipeline_application",
-            "branch_name",
-            "environment",
-            "result",
-            "run_url",
-        ]
-        st.dataframe(
-            code_pull_df[[c for c in code_pull_cols if c in code_pull_df.columns]],
-            use_container_width=True,
-            column_config={
-                "run_url": st.column_config.LinkColumn("Code Pull", display_text="Open"),
-            },
-        )
+    if not code_pull_df.empty and "result" in code_pull_df.columns:
+        total_failures += code_pull_df["result"].astype(str).str.lower().isin(["failed", "canceled", "cancelled"]).sum()
 
-        with st.expander("Show code-pull artifact details"):
-            artifact_cols = [
+    if not build_df.empty and "result" in build_df.columns:
+        total_failures += build_df["result"].astype(str).str.lower().isin(["failed", "canceled", "cancelled"]).sum()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Code Pull Runs", total_code_pull)
+    m2.metric("PRs Raised", int(total_pr))
+    m3.metric("Build Runs", total_build)
+    m4.metric("Failures", int(total_failures))
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Code Pull Status",
+        "PR Status",
+        "Trigger Build Pipeline",
+        "Build Status",
+    ])
+
+    with tab1:
+        st.markdown("### Code Pull Status")
+
+        if code_pull_df.empty:
+            st.info("No code-pull runs found for selected date.")
+        else:
+            code_pull_cols = [
+                "activity_date",
+                "id",
+                "pipeline_application",
+                "branch_name",
+                "environment",
+                "result",
+                "run_url",
+            ]
+
+            display_df = apply_status_badges(code_pull_df)
+
+            st.dataframe(
+                display_df[[c for c in code_pull_cols if c in display_df.columns]],
+                use_container_width=True,
+                column_config={
+                    "run_url": st.column_config.LinkColumn("Code Pull", display_text="Open"),
+                },
+            )
+
+            with st.expander("Show code-pull artifact details"):
+                artifact_cols = [
+                    "id",
+                    "pipeline_application",
+                    "build_branch",
+                    "war_files",
+                    "jar_files",
+                    "deploy_type",
+                    "source_branch",
+                    "created_at",
+                    "updated_at",
+                    "error",
+                ]
+                st.dataframe(
+                    code_pull_df[[c for c in artifact_cols if c in code_pull_df.columns]],
+                    use_container_width=True,
+                )
+
+    with tab2:
+        st.markdown("### PR Status")
+
+        if code_pull_df.empty:
+            st.info("No PR activity found for selected date.")
+        else:
+            pr_cols = [
+                "activity_date",
+                "id",
+                "pipeline_application",
+                "repo_name",
+                "pr_id",
+                "pr_status",
+                "pr_review_status",
+                "pr_target_branch",
+                "pr_url",
+            ]
+
+            display_pr_df = apply_status_badges(code_pull_df)
+
+            st.dataframe(
+                display_pr_df[[c for c in pr_cols if c in display_pr_df.columns]],
+                use_container_width=True,
+                column_config={
+                    "pr_url": st.column_config.LinkColumn("PR", display_text="Open"),
+                },
+            )
+
+        ready_for_pr = code_pull_df[
+            (code_pull_df["result"] == "succeeded")
+            & (
+                code_pull_df["pr_id"].isna()
+                | code_pull_df["pr_url"].isna()
+                | (code_pull_df["pr_url"] == "")
+                | (code_pull_df["pr_status"] == "failed")
+            )
+        ] if not code_pull_df.empty else pd.DataFrame()
+
+        if not ready_for_pr.empty:
+            st.markdown("### Raise PR")
+
+            pr_input_df = ready_for_pr.copy()
+            pr_input_df = pr_input_df.sort_values("created_at", ascending=False).reset_index(drop=True)
+            pr_input_df.insert(0, "Raise PR", False)
+            pr_input_df.loc[0, "Raise PR"] = True
+
+            pr_cols = [
+                "Raise PR",
+                "id",
+                "pipeline_application",
+                "branch_name",
+                "environment",
+                "source_branch",
+                "result",
+            ]
+
+            edited_pr_df = st.data_editor(
+                pr_input_df[[c for c in pr_cols if c in pr_input_df.columns]],
+                use_container_width=True,
+                num_rows="fixed",
+                column_config={
+                    "Raise PR": st.column_config.CheckboxColumn("Raise PR", default=False)
+                },
+            )
+
+            selected_pr_df = edited_pr_df[edited_pr_df["Raise PR"] == True]
+
+            if st.button("🚀 Raise PR for Selected"):
+                pr_results = []
+
+                for _, row in selected_pr_df.iterrows():
+                    full_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+
+                    row_id = full_row["id"]
+                    app = str(full_row.get("pipeline_application", "")).strip()
+                    env = normalize_env(full_row.get("environment", ""))
+                    source_branch = str(full_row.get("source_branch", "")).strip()
+                    branch_name = str(full_row.get("branch_name", "")).strip()
+
+                    app_key = str(app).strip().lower()
+                    repo_name = REPO_MAPPING.get(app_key)
+                    target_branch = PR_BRANCH_MAPPING.get(app_key, {}).get(env)
+
+                    if not repo_name:
+                        error = f"No repo mapping found for app: {app}"
+                        update_code_pull_pr(row_id, "", "failed", "failed", error)
+                        pr_results.append({"app": app, "status": "failed", "error": error})
+                        continue
+
+                    if not target_branch:
+                        error = f"No target branch mapping found for app={app}, env={env}"
+                        update_code_pull_pr(row_id, "", "failed", "failed", error, repo_name=repo_name)
+                        pr_results.append({"app": app, "status": "failed", "error": error})
+                        continue
+
+                    if not source_branch:
+                        error = "Source branch is empty."
+                        update_code_pull_pr(
+                            row_id,
+                            "",
+                            "failed",
+                            "failed",
+                            error,
+                            repo_name=repo_name,
+                            pr_target_branch=target_branch,
+                        )
+                        pr_results.append({"app": app, "status": "failed", "error": error})
+                        continue
+
+                    try:
+                        title = f"Code Pull: {app} - {branch_name}"
+                        description = (
+                            "Auto-created PR from AI Agent document extractor.\n\n"
+                            f"Application: {app}\n"
+                            f"Environment: {env}\n"
+                            f"Source Branch: {source_branch}\n"
+                            f"Target Branch: {target_branch}\n"
+                            f"Code Pull Run: {full_row.get('run_id')}\n"
+                        )
+
+                        pr = create_pull_request(
+                            repo_name=repo_name,
+                            source_branch=source_branch,
+                            target_branch=target_branch,
+                            title=title,
+                            description=description,
+                        )
+
+                        pr_url = pr.get("_links", {}).get("web", {}).get("href", "")
+                        pr_status = pr.get("status", "active")
+                        pr_id = pr.get("pullRequestId")
+
+                        update_code_pull_pr(
+                            row_id=row_id,
+                            pr_url=pr_url,
+                            pr_status=pr_status,
+                            pr_review_status="pending",
+                            error="",
+                            pr_id=pr_id,
+                            repo_name=repo_name,
+                            pr_target_branch=target_branch,
+                        )
+
+                        pr_results.append({
+                            "app": app,
+                            "repo": repo_name,
+                            "target_branch": target_branch,
+                            "status": pr_status,
+                            "pr_id": pr_id,
+                            "url": pr_url,
+                            "error": "",
+                        })
+
+                    except Exception as exc:
+                        error = str(exc)
+
+                        if "TF401179" in error or "GitPullRequestExistsException" in error:
+                            try:
+                                existing_pr = find_active_pull_request(
+                                    repo_name=repo_name,
+                                    source_branch=source_branch,
+                                    target_branch=target_branch,
+                                )
+
+                                if existing_pr:
+                                    pr_url = existing_pr.get("_links", {}).get("web", {}).get("href", "")
+                                    pr_status = existing_pr.get("status", "active")
+                                    pr_id = existing_pr.get("pullRequestId")
+
+                                    update_code_pull_pr(
+                                        row_id=row_id,
+                                        pr_url=pr_url,
+                                        pr_status=pr_status,
+                                        pr_review_status="pending",
+                                        error="Existing active PR found and linked.",
+                                        pr_id=pr_id,
+                                        repo_name=repo_name,
+                                        pr_target_branch=target_branch,
+                                    )
+
+                                    pr_results.append({
+                                        "app": app,
+                                        "repo": repo_name,
+                                        "target_branch": target_branch,
+                                        "status": "existing_pr_linked",
+                                        "pr_id": pr_id,
+                                        "url": pr_url,
+                                        "error": "",
+                                    })
+
+                                    continue
+
+                            except Exception as lookup_exc:
+                                error = f"{error} | Existing PR lookup failed: {str(lookup_exc)}"
+
+                        update_code_pull_pr(
+                            row_id=row_id,
+                            pr_url="",
+                            pr_status="failed",
+                            pr_review_status="failed",
+                            error=error,
+                            repo_name=repo_name,
+                            pr_target_branch=target_branch,
+                        )
+                        pr_results.append({"app": app, "status": "failed", "error": error})
+
+                refresh_pr_status(selected_date)
+                st.dataframe(pd.DataFrame(pr_results), use_container_width=True)
+
+    with tab3:
+        ready_for_build = code_pull_df[
+            (code_pull_df["result"] == "succeeded")
+        ] if not code_pull_df.empty else pd.DataFrame()
+
+        if ready_for_build.empty:
+            st.info("No successful code-pull runs available for build trigger.")
+        else:
+            st.markdown("### Trigger Build Pipeline")
+
+            build_input_cols = [
                 "id",
                 "pipeline_application",
                 "build_branch",
                 "war_files",
                 "jar_files",
                 "deploy_type",
-                "source_branch",
-                "created_at",
-                "updated_at",
-                "error",
+                "result",
             ]
-            st.dataframe(
-                code_pull_df[[c for c in artifact_cols if c in code_pull_df.columns]],
+
+            build_input_df = ready_for_build[[c for c in build_input_cols if c in ready_for_build.columns]].copy()
+            build_input_df.insert(0, "Trigger Build", False)
+
+            if not build_input_df.empty:
+                build_input_df.loc[0, "Trigger Build"] = True
+
+            edited_df = st.data_editor(
+                build_input_df,
                 use_container_width=True,
+                num_rows="fixed",
+                column_config={
+                    "Trigger Build": st.column_config.CheckboxColumn("Trigger Build", default=False)
+                },
             )
 
-    st.markdown("### PR Status")
+            selected_df = edited_df[edited_df["Trigger Build"] == True]
 
-    if code_pull_df.empty:
-        st.info("No PR activity found for selected date.")
-    else:
-        pr_cols = [
-            "activity_date",
-            "id",
-            "pipeline_application",
-            "repo_name",
-            "pr_id",
-            "pr_status",
-            "pr_review_status",
-            "pr_target_branch",
-            "pr_url",
-        ]
-        st.dataframe(
-            code_pull_df[[c for c in pr_cols if c in code_pull_df.columns]],
-            use_container_width=True,
-            column_config={
-                "pr_url": st.column_config.LinkColumn("PR", display_text="Open"),
-            },
-        )
+            if st.button("⚙️ Trigger Build Pipeline for Selected"):
+                results = []
 
-    ready_for_pr = code_pull_df[
-        (code_pull_df["result"] == "succeeded")
-        & (
-            code_pull_df["pr_id"].isna()
-            | code_pull_df["pr_url"].isna()
-            | (code_pull_df["pr_url"] == "")
-            | (code_pull_df["pr_status"] == "failed")
-        )
-    ] if not code_pull_df.empty else pd.DataFrame()
+                for _, row in selected_df.iterrows():
+                    code_pull_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+                    app = code_pull_row.get("pipeline_application")
+                    build_config = BUILD_PIPELINE_MAPPING.get(app)
 
-    if not ready_for_pr.empty:
-        st.markdown("### Raise PR")
+                    if not build_config:
+                        results.append({
+                            "app": app,
+                            "status": "failed",
+                            "error": f"No build pipeline mapping found for app: {app}",
+                        })
+                        continue
 
-        pr_input_df = ready_for_pr.copy()
-        pr_input_df = pr_input_df.sort_values("created_at", ascending=False).reset_index(drop=True)
-        pr_input_df.insert(0, "Raise PR", False)
-        pr_input_df.loc[0, "Raise PR"] = True
+                    item = {
+                        "build_branch": code_pull_row.get("build_branch"),
+                        "war_files": code_pull_row.get("war_files") or "None",
+                        "jar_files": code_pull_row.get("jar_files") or "None",
+                        "deploy_type": code_pull_row.get("deploy_type") or "Regular",
+                    }
 
-        pr_cols = [
-            "Raise PR",
-            "id",
-            "pipeline_application",
-            "branch_name",
-            "environment",
-            "source_branch",
-            "result",
-        ]
+                    try:
+                        pipeline_id, result, template_parameters = trigger_build_pipeline_item(item, build_config)
 
-        edited_pr_df = st.data_editor(
-            pr_input_df[[c for c in pr_cols if c in pr_input_df.columns]],
-            use_container_width=True,
-            num_rows="fixed",
-            column_config={
-                "Raise PR": st.column_config.CheckboxColumn("Raise PR", default=False)
-            },
-        )
+                        insert_build_run(
+                            code_pull_row=code_pull_row,
+                            pipeline_id=pipeline_id,
+                            result=result,
+                            normalized_war_files=template_parameters.get("war_files", "None"),
+                            normalized_jar_files=template_parameters.get("jar_files", "None"),
+                        )
 
-        selected_pr_df = edited_pr_df[edited_pr_df["Raise PR"] == True]
+                        results.append({
+                            "app": app,
+                            "branch": template_parameters.get("branch"),
+                            "war_files": template_parameters.get("war_files"),
+                            "jar_files": template_parameters.get("jar_files"),
+                            "deploy_type": template_parameters.get("deploy_type"),
+                            "status": "triggered",
+                            "run_id": result.get("id"),
+                            "url": result.get("_links", {}).get("web", {}).get("href", ""),
+                            "error": "",
+                        })
 
-        if st.button("Raise PR for Selected"):
-            pr_results = []
+                    except Exception as exc:
+                        results.append({
+                            "app": app,
+                            "status": "failed",
+                            "error": str(exc),
+                        })
 
-            for _, row in selected_pr_df.iterrows():
-                full_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
+                st.subheader("Build Trigger Results")
+                st.dataframe(pd.DataFrame(results), use_container_width=True)
 
-                row_id = full_row["id"]
-                app = str(full_row.get("pipeline_application", "")).strip()
-                env = normalize_env(full_row.get("environment", ""))
-                source_branch = str(full_row.get("source_branch", "")).strip()
-                branch_name = str(full_row.get("branch_name", "")).strip()
+    with tab4:
+        st.markdown("### Build Status")
 
-                app_key = str(app).strip().lower()
-                repo_name = REPO_MAPPING.get(app_key)
-                target_branch = PR_BRANCH_MAPPING.get(app_key, {}).get(env)
+        build_df = get_build_runs_by_date(selected_date)
 
-                if not repo_name:
-                    error = f"No repo mapping found for app: {app}"
-                    update_code_pull_pr(row_id, "", "failed", "failed", error)
-                    pr_results.append({"app": app, "status": "failed", "error": error})
-                    continue
+        if build_df.empty:
+            st.info("No build runs found for selected date.")
+        else:
+            build_cols = [
+                "activity_date",
+                "id",
+                "code_pull_id",
+                "pipeline_application",
+                "build_branch",
+                "war_files",
+                "jar_files",
+                "deploy_type",
+                "status",
+                "result",
+                "run_url",
+                "error",
+                "created_at",
+                "updated_at",
+            ]
 
-                if not target_branch:
-                    error = f"No target branch mapping found for app={app}, env={env}"
-                    update_code_pull_pr(row_id, "", "failed", "failed", error, repo_name=repo_name)
-                    pr_results.append({"app": app, "status": "failed", "error": error})
-                    continue
+            display_build_df = apply_status_badges(build_df)
 
-                if not source_branch:
-                    error = "Source branch is empty."
-                    update_code_pull_pr(
-                        row_id,
-                        "",
-                        "failed",
-                        "failed",
-                        error,
-                        repo_name=repo_name,
-                        pr_target_branch=target_branch,
-                    )
-                    pr_results.append({"app": app, "status": "failed", "error": error})
-                    continue
-
-                try:
-                    title = f"Code Pull: {app} - {branch_name}"
-                    description = (
-                        "Auto-created PR from AI Agent document extractor.\n\n"
-                        f"Application: {app}\n"
-                        f"Environment: {env}\n"
-                        f"Source Branch: {source_branch}\n"
-                        f"Target Branch: {target_branch}\n"
-                        f"Code Pull Run: {full_row.get('run_id')}\n"
-                    )
-
-                    pr = create_pull_request(
-                        repo_name=repo_name,
-                        source_branch=source_branch,
-                        target_branch=target_branch,
-                        title=title,
-                        description=description,
-                    )
-
-                    pr_url = pr.get("_links", {}).get("web", {}).get("href", "")
-                    pr_status = pr.get("status", "active")
-                    pr_id = pr.get("pullRequestId")
-
-                    update_code_pull_pr(
-                        row_id=row_id,
-                        pr_url=pr_url,
-                        pr_status=pr_status,
-                        pr_review_status="pending",
-                        error="",
-                        pr_id=pr_id,
-                        repo_name=repo_name,
-                        pr_target_branch=target_branch,
-                    )
-
-                    pr_results.append({
-                        "app": app,
-                        "repo": repo_name,
-                        "target_branch": target_branch,
-                        "status": pr_status,
-                        "pr_id": pr_id,
-                        "url": pr_url,
-                        "error": "",
-                    })
-
-                except Exception as exc:
-                    error = str(exc)
-
-                    if "TF401179" in error or "GitPullRequestExistsException" in error:
-                        try:
-                            existing_pr = find_active_pull_request(
-                                repo_name=repo_name,
-                                source_branch=source_branch,
-                                target_branch=target_branch,
-                            )
-
-                            if existing_pr:
-                                pr_url = existing_pr.get("_links", {}).get("web", {}).get("href", "")
-                                pr_status = existing_pr.get("status", "active")
-                                pr_id = existing_pr.get("pullRequestId")
-
-                                update_code_pull_pr(
-                                    row_id=row_id,
-                                    pr_url=pr_url,
-                                    pr_status=pr_status,
-                                    pr_review_status="pending",
-                                    error="Existing active PR found and linked.",
-                                    pr_id=pr_id,
-                                    repo_name=repo_name,
-                                    pr_target_branch=target_branch,
-                                )
-
-                                pr_results.append({
-                                    "app": app,
-                                    "repo": repo_name,
-                                    "target_branch": target_branch,
-                                    "status": "existing_pr_linked",
-                                    "pr_id": pr_id,
-                                    "url": pr_url,
-                                    "error": "",
-                                })
-
-                                continue
-
-                        except Exception as lookup_exc:
-                            error = f"{error} | Existing PR lookup failed: {str(lookup_exc)}"
-
-                    update_code_pull_pr(
-                        row_id=row_id,
-                        pr_url="",
-                        pr_status="failed",
-                        pr_review_status="failed",
-                        error=error,
-                        repo_name=repo_name,
-                        pr_target_branch=target_branch,
-                    )
-                    pr_results.append({"app": app, "status": "failed", "error": error})
-
-            refresh_pr_status(selected_date)
-            code_pull_df = get_code_pull_runs_by_date(selected_date)
-
-            st.dataframe(pd.DataFrame(pr_results), use_container_width=True)
-
-    ready_for_build = code_pull_df[
-        (code_pull_df["result"] == "succeeded")
-    ] if not code_pull_df.empty else pd.DataFrame()
-
-    if ready_for_build.empty:
-        st.info("No successful code-pull runs available for build trigger.")
-    else:
-        st.markdown("### Trigger Build Pipeline")
-
-        build_input_cols = [
-            "id",
-            "pipeline_application",
-            "build_branch",
-            "war_files",
-            "jar_files",
-            "deploy_type",
-            "result",
-        ]
-
-        build_input_df = ready_for_build[[c for c in build_input_cols if c in ready_for_build.columns]].copy()
-        build_input_df.insert(0, "Trigger Build", False)
-
-        if not build_input_df.empty:
-            build_input_df.loc[0, "Trigger Build"] = True
-
-        edited_df = st.data_editor(
-            build_input_df,
-            use_container_width=True,
-            num_rows="fixed",
-            column_config={
-                "Trigger Build": st.column_config.CheckboxColumn("Trigger Build", default=False)
-            },
-        )
-
-        selected_df = edited_df[edited_df["Trigger Build"] == True]
-
-        if st.button("Trigger Build Pipeline for Selected"):
-            results = []
-
-            for _, row in selected_df.iterrows():
-                code_pull_row = code_pull_df[code_pull_df["id"] == row["id"]].iloc[0]
-                app = code_pull_row.get("pipeline_application")
-                build_config = BUILD_PIPELINE_MAPPING.get(app)
-
-                if not build_config:
-                    results.append({
-                        "app": app,
-                        "status": "failed",
-                        "error": f"No build pipeline mapping found for app: {app}",
-                    })
-                    continue
-
-                item = {
-                    "build_branch": code_pull_row.get("build_branch"),
-                    "war_files": code_pull_row.get("war_files") or "None",
-                    "jar_files": code_pull_row.get("jar_files") or "None",
-                    "deploy_type": code_pull_row.get("deploy_type") or "Regular",
-                }
-
-                try:
-                    pipeline_id, result, template_parameters = trigger_build_pipeline_item(item, build_config)
-
-                    insert_build_run(
-                        code_pull_row=code_pull_row,
-                        pipeline_id=pipeline_id,
-                        result=result,
-                        normalized_war_files=template_parameters.get("war_files", "None"),
-                        normalized_jar_files=template_parameters.get("jar_files", "None"),
-                    )
-
-                    results.append({
-                        "app": app,
-                        "branch": template_parameters.get("branch"),
-                        "war_files": template_parameters.get("war_files"),
-                        "jar_files": template_parameters.get("jar_files"),
-                        "deploy_type": template_parameters.get("deploy_type"),
-                        "status": "triggered",
-                        "run_id": result.get("id"),
-                        "url": result.get("_links", {}).get("web", {}).get("href", ""),
-                        "error": "",
-                    })
-
-                except Exception as exc:
-                    results.append({
-                        "app": app,
-                        "status": "failed",
-                        "error": str(exc),
-                    })
-
-            st.subheader("Build Trigger Results")
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
-
-    st.markdown("### Build Status")
-
-    build_df = get_build_runs_by_date(selected_date)
-
-    if build_df.empty:
-        st.info("No build runs found for selected date.")
-    else:
-        build_cols = [
-            "activity_date",
-            "id",
-            "code_pull_id",
-            "pipeline_application",
-            "build_branch",
-            "war_files",
-            "jar_files",
-            "deploy_type",
-            "status",
-            "result",
-            "run_url",
-            "error",
-            "created_at",
-            "updated_at",
-        ]
-
-        st.dataframe(
-            build_df[[c for c in build_cols if c in build_df.columns]],
-            use_container_width=True,
-            column_config={
-                "run_url": st.column_config.LinkColumn("Build", display_text="Open"),
-            },
-        )
+            st.dataframe(
+                display_build_df[[c for c in build_cols if c in display_build_df.columns]],
+                use_container_width=True,
+                column_config={
+                    "run_url": st.column_config.LinkColumn("Build", display_text="Open"),
+                },
+            )
 
 
 def filter_collection_services(extracted_data, environment):
@@ -648,9 +816,9 @@ def filter_collection_services(extracted_data, environment):
 
 
 def render_collections_dashboard(selected_date, use_vendor_image):
-    st.subheader("Collections Deployment Dashboard")
+    st.subheader("Collections Control Center")
 
-    if st.button("Get / Refresh Collections Pipeline Status"):
+    if st.button("🔄 Get / Refresh Collections Pipeline Status"):
         dashboard = get_deployments_by_date(selected_date)
 
         for _, row in dashboard.iterrows():
@@ -676,8 +844,10 @@ def render_collections_dashboard(selected_date, use_vendor_image):
         st.info("No collections deployments found for selected date.")
         return
 
+    display_dashboard_df = apply_status_badges(dashboard_df)
+
     st.dataframe(
-        dashboard_df,
+        display_dashboard_df,
         use_container_width=True,
         column_config={
             "build_url": st.column_config.LinkColumn("Build", display_text="Open"),
@@ -695,7 +865,7 @@ def render_collections_dashboard(selected_date, use_vendor_image):
         },
     )
 
-    if st.button("Retrigger Selected Collection Services"):
+    if st.button("🔁 Retrigger Selected Collection Services"):
         selected_retry_df = edited_dashboard_df[
             edited_dashboard_df["retrigger"] == True
         ]
@@ -719,35 +889,39 @@ def render_collections_dashboard(selected_date, use_vendor_image):
 check_config()
 init_db()
 
-extraction_type = st.radio(
-    "Extraction Type",
-    [
-        "Image Tag Extraction",
-        "Code Pull Extraction",
-    ],
-    horizontal=True,
-)
+with st.sidebar:
+    st.markdown("## Control Panel")
 
-environment = None
-use_vendor_image = True
+    extraction_type = st.radio(
+        "Extraction Type",
+        [
+            "Image Tag Extraction",
+            "Code Pull Extraction",
+        ],
+    )
 
-if extraction_type == "Image Tag Extraction":
-    environment = st.selectbox("Environment", list(PIPELINE_MAPPING.keys()))
-    use_vendor_image = st.checkbox("useVendorImage", value=True)
+    environment = None
+    use_vendor_image = True
 
-use_ai_extractor = st.checkbox("Use AI Agent for unstructured documents", value=True)
+    if extraction_type == "Image Tag Extraction":
+        environment = st.selectbox("Environment", list(PIPELINE_MAPPING.keys()))
+        use_vendor_image = st.checkbox("useVendorImage", value=True)
 
-selected_date = st.date_input("Select activity date", value=date.today())
+    use_ai_extractor = st.checkbox("Use AI Agent", value=True)
 
-uploaded_file = st.file_uploader(
-    "Upload Release Document",
-    type=["pdf", "docx"]
-)
+    selected_date = st.date_input("Activity Date", value=date.today())
+
+    uploaded_file = st.file_uploader(
+        "Upload Release Document",
+        type=["pdf", "docx"]
+    )
+
+render_main_header(extraction_type)
 
 if uploaded_file and extraction_type == "Code Pull Extraction":
     document_text = extract_text_from_document(uploaded_file)
 
-    if st.button("Extract Code Pull Details"):
+    if st.button("🧠 Extract Code Pull Details"):
         try:
             code_pull_json = ai_extract_code_pull_details(document_text)
             st.session_state["code_pull_json"] = code_pull_json
@@ -788,7 +962,7 @@ if uploaded_file and extraction_type == "Code Pull Extraction":
 
                 selected_items_df = edited_items_df[edited_items_df["Select"] == True]
 
-                if st.button("Trigger Selected Code Pull Pipelines"):
+                if st.button("🚀 Trigger Selected Code Pull Pipelines"):
                     results = []
 
                     for _, row in selected_items_df.iterrows():
@@ -871,7 +1045,7 @@ if uploaded_file and extraction_type == "Image Tag Extraction":
 
         selected_df = edited_df[edited_df["Select"] == True]
 
-        if st.button("Trigger Selected Service Pipelines"):
+        if st.button("🚀 Trigger Selected Service Pipelines"):
             for _, row in selected_df.iterrows():
                 result = trigger_service(
                     service=row["Service"],
