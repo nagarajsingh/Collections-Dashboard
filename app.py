@@ -67,21 +67,13 @@ def inject_premium_css():
             font-size: 36px;
             font-weight: 850;
             letter-spacing: -0.5px;
+            color: white !important;
         }
 
         .main-header p {
             margin-top: 10px;
-            color: #dbeafe;
+            color: #dbeafe !important;
             font-size: 15px;
-        }
-
-        .section-card {
-            background: rgba(255, 255, 255, 0.92);
-            padding: 18px;
-            border-radius: 18px;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-            margin-bottom: 18px;
         }
 
         div[data-testid="stMetric"] {
@@ -97,13 +89,13 @@ def inject_premium_css():
             font-weight: 700;
             border: 0;
             background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            color: white;
+            color: white !important;
             padding: 0.6rem 1rem;
         }
 
         .stButton > button:hover {
             background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
-            color: white;
+            color: white !important;
         }
 
         div[data-testid="stDataFrame"] {
@@ -117,17 +109,61 @@ def inject_premium_css():
             background: #0f172a;
         }
 
-        section[data-testid="stSidebar"] * {
-            color: #f8fafc;
-        }
-
-        section[data-testid="stSidebar"] .stSelectbox label,
-        section[data-testid="stSidebar"] .stRadio label,
-        section[data-testid="stSidebar"] .stCheckbox label,
-        section[data-testid="stSidebar"] .stDateInput label,
-        section[data-testid="stSidebar"] .stFileUploader label {
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3 {
             color: #f8fafc !important;
             font-weight: 700;
+        }
+
+        section[data-testid="stSidebar"] input,
+        section[data-testid="stSidebar"] textarea,
+        section[data-testid="stSidebar"] select {
+            background: #ffffff !important;
+            color: #0f172a !important;
+        }
+
+        section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+        section[data-testid="stSidebar"] div[data-baseweb="select"] div,
+        section[data-testid="stSidebar"] div[data-baseweb="input"] input {
+            color: #0f172a !important;
+        }
+
+        div[data-testid="stDateInput"] input {
+            background: #ffffff !important;
+            color: #0f172a !important;
+        }
+
+        div[data-testid="stDateInput"] svg {
+            fill: #0f172a !important;
+        }
+
+        section[data-testid="stFileUploader"] {
+            color: #0f172a !important;
+        }
+
+        section[data-testid="stFileUploader"] > div {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 2px dashed #cbd5e1 !important;
+            border-radius: 12px !important;
+        }
+
+        section[data-testid="stFileUploader"] * {
+            color: #0f172a !important;
+        }
+
+        section[data-testid="stFileUploader"] button {
+            background: #2563eb !important;
+            color: #ffffff !important;
+            border-radius: 8px !important;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: #64748b !important;
         }
 
         h2, h3 {
@@ -162,7 +198,7 @@ def status_badge(value):
         return f"✅ {value}"
     if lower_value in ["failed", "rejected", "abandoned", "cancelled", "canceled"]:
         return f"❌ {value}"
-    if lower_value in ["pending", "inprogress", "inprogress", "running"]:
+    if lower_value in ["pending", "inprogress", "running"]:
         return f"🟡 {value}"
 
     return value
